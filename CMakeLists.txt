@@ -144,6 +144,9 @@ option(DEV_BRANCH   "Development branch"                                        
 option(QT           "Qt GUI"                                                        ON)
 option(DISCORD      "Discord Rich Presence support"                                 ON)
 
+option(NULL_AUDIO   "Null audio driver"                                             OFF)
+option(HEADLESS     "Headless 86Box"                                                OFF)
+
 # Development branch features
 #
 #                      Option         Description                                   Def.    Condition       Otherwise
@@ -164,6 +167,18 @@ cmake_dependent_option(PAS16          "Pro Audio Spectrum 16"                   
 cmake_dependent_option(SIO_DETECT     "Super I/O Detection Helper"                  ON      "DEV_BRANCH"    OFF)
 cmake_dependent_option(VGAWONDER      "ATI VGA Wonder (ATI-18800)"                  ON      "DEV_BRANCH"    OFF)
 cmake_dependent_option(XL24           "ATI VGA Wonder XL24 (ATI-28800-6)"           ON      "DEV_BRANCH"    OFF)
+
+if(HEADLESS)
+    set(NULL_AUDIO ON)
+    set(VNC ON)
+    set(DINPUT OFF)
+    set(DISCORD OFF)
+endif()
+
+if(NULL_AUDIO)
+    set(OPENAL OFF)
+    set(RTMIDI OFF)
+endif()
 
 # Ditto but for Qt
 if(QT)

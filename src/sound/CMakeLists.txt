@@ -38,7 +38,11 @@ if(OPENAL)
     include_directories(${OPENAL_INCLUDE_DIR})
 
     target_sources(snd PRIVATE openal.c)
+elseif(NULL_AUDIO)
+    # null sound interface
+    target_sources(snd PRIVATE null.cpp)
 else()
+
     if(WIN32)
         option(FAUDIO "Use FAudio instead of XAudio2" OFF)
     endif()

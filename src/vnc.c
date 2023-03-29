@@ -52,6 +52,7 @@ typedef struct {
 } MOUSESTATE;
 
 static MOUSESTATE ms;
+#define ENABLE_VNC_LOG 1
 
 #ifdef ENABLE_VNC_LOG
 int vnc_do_log = ENABLE_VNC_LOG;
@@ -70,6 +71,8 @@ vnc_log(const char *fmt, ...)
 #else
 #    define vnc_log(fmt, ...)
 #endif
+
+#define CLAMP(val, low, high) MIN(high, MAX(low, val))
 
 static void
 vnc_kbdevent(rfbBool down, rfbKeySym k, rfbClientPtr cl)
@@ -146,6 +149,9 @@ vnc_newclient(rfbClientPtr cl)
     /* Hook the ClientGone function so we know when they're gone. */
     cl->clientGoneHook = vnc_clientgone;
 
+    // test
+    cl->preferredEncoding = rfbEncodingRaw;
+
     vnc_log("VNC: new client: %s\n", cl->host);
     if (++clients == 1) {
         /* Reset the mouse. */
@@ -188,7 +194,16 @@ vnc_blit(int x, int y, int w, int h, int monitor_index)
 {
     int       row;
 
+    pclog("vnc_blit: allowed %dx%d\n", allowedX, allowedY);
+
     if (monitor_index || (x < 0) || (y < 0) || (w < VNC_MIN_X) || (h < VNC_MIN_Y) || (w > VNC_MAX_X) || (h > VNC_MAX_Y) || (buffer32 == NULL)) {
+        video_blit_complete_monitor(monitor_index);
+        return;
+    }
+
+    if( w > rfb->width || h > rfb->height) {
+        pclog("vnc_blit: invalid blit? the blit handler is passed %dx%d\n", w, h);
+        vnc_resize(w, h);
         video_blit_complete_monitor(monitor_index);
         return;
     }
@@ -203,6 +218,8 @@ vnc_blit(int x, int y, int w, int h, int monitor_index)
 
     if (!updatingSize)
         rfbMarkRectAsModified(rfb, 0, 0, allowedX, allowedY);
+    //if(!updatingSize)
+    //    rfbMarkRectAsModified(rfb, 0, 0, CLAMP(w, 0, allowedX), CLAMP(h, 0, allowedY));
 }
 
 /* Initialize VNC for operation. */
@@ -242,6 +259,7 @@ vnc_init(UNUSED(void *arg))
         rfb->ptrAddEvent   = vnc_ptrevent;
         rfb->kbdAddEvent   = vnc_kbdevent;
         rfb->newClientHook = vnc_newclient;
+
 
         /* Set up our current resolution. */
         rfb->width  = allowedX;
