@@ -102,7 +102,7 @@ jobs:
             rtmidi:p
             libvncserver:p
             ${{ matrix.ui.packages }}
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Configure CMake
         run: >-
           cmake -G Ninja -S . -B build --preset ${{ matrix.build.preset }}
@@ -194,7 +194,7 @@ jobs:
           -password "${{ secrets.GITHUB_TOKEN }}"
       - name: Fix MSVC atomic headers
         run: dir "C:/Program Files/Microsoft Visual Studio/2022/*/VC/Tools/MSVC/*/include" -include stdatomic.h -recurse | del
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Configure CMake
         run: >
           cmake -G Ninja -S . -B build --preset ${{ matrix.build.preset }}
@@ -268,7 +268,7 @@ jobs:
           libopenal-dev
           libvncserver-dev
           ${{ matrix.ui.packages }}
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Configure CMake
         run: >-
           cmake -G Ninja -S . -B build --preset ${{ matrix.build.preset }}
@@ -328,7 +328,7 @@ jobs:
           openal-soft
           libvncserver
           ${{ matrix.ui.packages }}
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Configure CMake
         run: >-
           cmake -G Ninja -S . -B build --preset ${{ matrix.build.preset }}
