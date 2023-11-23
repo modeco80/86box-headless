@@ -91,7 +91,7 @@ int
 plat_vidapi(char *api)
 {
     // Always initalize VNC
-    vnc_init(NULL);
+    //vnc_init(NULL);
 
     endblit();
     device_force_redraw();
@@ -114,7 +114,7 @@ plat_mouse_capture(int on)
 void
 plat_resize(int w, int h)
 {
-    vnc_resize(w, h);
+    //vnc_resize(w, h);
 }
 
 wchar_t *

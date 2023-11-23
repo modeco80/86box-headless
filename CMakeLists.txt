@@ -144,8 +144,8 @@ option(DEV_BRANCH   "Development branch"                                        
 option(QT           "Qt GUI"                                                        ON)
 option(DISCORD      "Discord Rich Presence support"                                 ON)
 
-option(NULL_AUDIO   "Null audio driver"                                             OFF)
-option(HEADLESS     "Headless 86Box"                                                OFF)
+option(RAMP         "Remote 86Box Machine Protocol server"                          OFF)
+option(HEADLESS     "Headless 86Box (Linux-only)"                                   OFF)
 
 # Development branch features
 #
@@ -169,15 +169,22 @@ cmake_dependent_option(VGAWONDER      "ATI VGA Wonder (ATI-18800)"              
 cmake_dependent_option(XL24           "ATI VGA Wonder XL24 (ATI-28800-6)"           ON      "DEV_BRANCH"    OFF)
 
 if(HEADLESS)
-    set(NULL_AUDIO ON)
-    set(VNC ON)
+    #set(NULL_AUDIO ON)
+
+    # Turn off useless features we don't need
+    set(VNC OFF)
     set(DINPUT OFF)
     set(DISCORD OFF)
-endif()
 
-if(NULL_AUDIO)
+    # Et al for audio..
     set(OPENAL OFF)
     set(RTMIDI OFF)
+
+    # Tell code to enable RAMP
+    set(RAMP ON)
+
+    # Add required things for ramp
+    find_package(Protobuf CONFIG REQUIRED)
 endif()
 
 # Ditto but for Qt

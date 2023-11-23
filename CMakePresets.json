@@ -18,6 +18,31 @@
             "generator": "Ninja",
             "hidden": true
         },
+
+        {
+            "name": "base-ramp",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/artifacts",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+                "DEV_BRANCH": "OFF",
+                "NEW_DYNAREC": "OFF",
+                "HEADLESS": "ON"
+            },
+            "generator": "Ninja",
+            "hidden": true
+        },
+
+        {
+            "name": "ramp",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "DEV_BRANCH": "ON",
+                "NEW_DYNAREC": "OFF"
+            },
+            "inherits": "base-ramp"
+        },
+
         {
             "name": "regular",
             "cacheVariables": {

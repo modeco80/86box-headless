@@ -6,7 +6,7 @@
  *
  *           This file is part of the 86Box distribution.
  *
- *           Null audio interface for headless port. (unused)
+ *           Audio interface for RAMP.
  *
  *
  *
@@ -28,6 +28,8 @@ extern "C" {
 #include <86box/plat_dynld.h>
 #include <86box/sound.h>
 }
+
+#include "rampserver.hpp"
 
 static int                     midi_freq     = 44100;
 static int                     midi_buf_size = 4410;

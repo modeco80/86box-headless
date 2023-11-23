@@ -94,7 +94,7 @@ plat_init_rom_paths(void)
         char xdg_rom_path[1024] = { 0 };
         strncpy(xdg_rom_path, getenv("XDG_DATA_HOME"), 1024);
         path_slash(xdg_rom_path);
-        strncat(xdg_rom_path, "86Box/", 1024);
+        strncat(xdg_rom_path, "86Box/", 1024-1);
 
         if (!plat_dir_check(xdg_rom_path))
             plat_dir_create(xdg_rom_path);

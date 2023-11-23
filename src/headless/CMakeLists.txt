@@ -19,10 +19,34 @@ add_library(plat OBJECT headless.c
         headless_fs.cpp
         headless_dynld.cpp
         headless_util.cpp
-        headless_timer.cpp)
+        headless_timer.cpp
+        
+        # RAMP
+        rampserver.cpp
+        rampvideo.cpp
+        rampsound.cpp
+        )
+
+# TODO: protobuf does Not seem to work for some reason
+# might just give up and use flatbuffers since it seems like a better idea
+#add_library(ramp-proto OBJECT "${PROJECT_SOURCE_DIR}/src/headless/proto/ramp.proto")
+#protobuf_generate(
+#    TARGET ramp-proto
+#    IMPORT_DIRS "${PROJECT_SOURCE_DIR}/src/headless/proto"
+#    PROTOC_OUT_DIR "${PROJECT_BINARY_DIR}/generated"
+#)
+
+#target_link_libraries(plat PUBLIC 
+#    protobuf::libprotobuf-lite
+#    ramp-proto
+#)
+
+#target_include_directories(plat PRIVATE
+#    ${PROJECT_BINARY_DIR}
+#)
 
 if (NOT CPPTHREADS)
-    message(FATAL_ERROR "headless only compiles with CPPTHREAD=ON")
+    message(FATAL_ERROR "headless only compiles with CPPTHREADS=ON")
 endif()
 
 #set(THREADS_PREFER_PTHREAD_FLAG TRUE)

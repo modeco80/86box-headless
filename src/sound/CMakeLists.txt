@@ -38,9 +38,10 @@ if(OPENAL)
     include_directories(${OPENAL_INCLUDE_DIR})
 
     target_sources(snd PRIVATE openal.c)
-elseif(NULL_AUDIO)
-    # null sound interface
-    target_sources(snd PRIVATE null.cpp)
+elseif(RAMP)
+    # RAMP sound interface doesn't need anything in the snd library
+    # We instead implement the sound interface inside of the headless/RAMP binary
+    #target_sources(snd PRIVATE rampsound.cpp)
 else()
 
     if(WIN32)
