@@ -23,7 +23,10 @@ int update_icons;
 
 int hide_tool_bar;
 int hide_status_bar;
-double mouse_sensitivity;
+extern double mouse_sensitivity;
+
+// New UI stuff for 4.0+ ?
+int status_icons_fullscreen;
 
 void
 ui_sb_update_icon_state(int tag, int state)
@@ -53,6 +56,12 @@ ui_sb_update_text(void)
 void
 ui_sb_set_text_w(wchar_t *wstr)
 {
+}
+
+void 
+ui_hard_reset_completed(void) 
+{
+    /* Stub */
 }
 
 int

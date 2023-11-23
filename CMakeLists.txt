@@ -175,6 +175,7 @@ if(HEADLESS)
     # Et al for audio..
     set(OPENAL OFF)
     set(RTMIDI OFF)
+    set(FLUIDSYNTH OFF) # For now
 
     # Tell code to enable RAMP
     set(RAMP ON)

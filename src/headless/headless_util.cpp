@@ -3,6 +3,7 @@
 //
 
 #include <cstring>
+#include <cstdint>
 
 extern "C" {
 
@@ -37,6 +38,40 @@ local_strsep(char **str, const char *sep)
 
     *str = end;
     return s;
+}
+
+// Serial passthrough device - for now, we explicitly do *not* support this
+// and essentially stub it out; later on I might implement it
+
+void 
+plat_serpt_write(void *priv, uint8_t data) 
+{
+    return;
+}
+
+int 
+plat_serpt_read(void *priv, uint8_t *data) 
+{
+    *data = 0xff;
+    return 1;
+}
+
+int 
+plat_serpt_open_device(void *priv) 
+{
+    return 1;
+}
+
+void
+plat_serpt_close(void *priv) 
+{
+    return;
+}
+
+void 
+plat_serpt_set_params(void *priv) 
+{
+    return;
 }
 
 }

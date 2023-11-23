@@ -49,6 +49,17 @@ path_slash(char *path)
     path_normalize(path);
 }
 
+const char *
+path_get_slash(char *path)
+{
+    char *ret = "";
+
+    if (path[strlen(path) - 1] != '/')
+        ret =  "/";
+
+    return ret;
+}
+
 char *
 path_get_filename(char *s)
 {
