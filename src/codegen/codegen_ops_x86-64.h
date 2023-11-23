@@ -219,8 +219,9 @@ CALL_FUNC(uintptr_t func)
 }
 
 static __inline void
-RELEASE_REG(int host_reg)
+RELEASE_REG(UNUSED(int host_reg))
 {
+    //
 }
 
 static __inline int
@@ -536,7 +537,8 @@ FETCH_EA_16(x86seg *op_ea_seg, uint32_t fetchdat, int op_ssegs, uint32_t *op_pc)
         addlong((fetchdat >> 8) & 0xffff);
         (*op_pc) += 2;
     } else {
-        int base_reg = 0, index_reg = 0;
+        int base_reg  = 0;
+        int index_reg = 0;
 
         switch (rm) {
             case 0:
@@ -639,8 +641,9 @@ FETCH_EA_32(x86seg *op_ea_seg, uint32_t fetchdat, int op_ssegs, uint32_t *op_pc,
     uint32_t new_eaaddr;
 
     if (rm == 4) {
-        uint8_t sib      = fetchdat >> 8;
-        int     base_reg = -1, index_reg = -1;
+        uint8_t sib       = fetchdat >> 8;
+        int     base_reg  = -1;
+        int     index_reg = -1;
 
         (*op_pc)++;
 
@@ -3947,7 +3950,8 @@ FP_LOAD_REG_D(int reg, int *host_reg1, int *host_reg2)
 static __inline int64_t
 x87_fround16_64(double b)
 {
-    int16_t a, c;
+    int16_t a;
+    int16_t c;
 
     switch ((cpu_state.npxc >> 10) & 3) {
         case 0: /*Nearest*/
@@ -3972,7 +3976,8 @@ x87_fround16_64(double b)
 static __inline int64_t
 x87_fround32_64(double b)
 {
-    int32_t a, c;
+    int32_t a;
+    int32_t c;
 
     switch ((cpu_state.npxc >> 10) & 3) {
         case 0: /*Nearest*/
@@ -3997,7 +4002,8 @@ x87_fround32_64(double b)
 static __inline int64_t
 x87_fround(double b)
 {
-    int64_t a, c;
+    int64_t a;
+    int64_t c;
 
     switch ((cpu_state.npxc >> 10) & 3) {
         case 0: /*Nearest*/
@@ -4548,8 +4554,9 @@ FP_COMPARE_IL(void)
 }
 
 static __inline void
-UPDATE_NPXC(int reg)
+UPDATE_NPXC(UNUSED(int reg))
 {
+    //
 }
 
 static __inline void
@@ -4773,13 +4780,14 @@ STORE_MMX_Q_MMX(int guest_reg, int host_reg)
     addbyte((uint8_t) cpu_state_offset(MM[guest_reg].q));
 }
 
-#define MMX_x86_OP(name, opcode)                              \
-    static __inline void MMX_##name(int dst_reg, int src_reg) \
-    {                                                         \
-        addbyte(0x66); /*op dst_reg, src_reg*/                \
-        addbyte(0x0f);                                        \
-        addbyte(opcode);                                      \
-        addbyte(0xc0 | (dst_reg << 3) | src_reg);             \
+#define MMX_x86_OP(name, opcode)                  \
+    static __inline void                          \
+    MMX_##name(int dst_reg, int src_reg)          \
+    {                                             \
+        addbyte(0x66); /*op dst_reg, src_reg*/    \
+        addbyte(0x0f);                            \
+        addbyte(opcode);                          \
+        addbyte(0xc0 | (dst_reg << 3) | src_reg); \
     }
 
 MMX_x86_OP(AND, 0xdb)
@@ -5012,7 +5020,9 @@ LOAD_EA(void)
 static __inline void
 MEM_CHECK_WRITE(x86seg *seg)
 {
-    uint8_t *jump1, *jump2, *jump3 = NULL;
+    uint8_t *jump1 = NULL;
+    uint8_t *jump2 = NULL;
+    uint8_t *jump3 = NULL;
 
     CHECK_SEG_WRITE(seg);
 
@@ -5113,7 +5123,10 @@ MEM_CHECK_WRITE(x86seg *seg)
 static __inline void
 MEM_CHECK_WRITE_W(x86seg *seg)
 {
-    uint8_t *jump1, *jump2, *jump3, *jump4 = NULL;
+    uint8_t *jump1 = NULL;
+    uint8_t *jump2 = NULL;
+    uint8_t *jump3 = NULL;
+    uint8_t *jump4 = NULL;
     int      jump_pos;
 
     CHECK_SEG_WRITE(seg);
@@ -5246,7 +5259,10 @@ MEM_CHECK_WRITE_W(x86seg *seg)
 static __inline void
 MEM_CHECK_WRITE_L(x86seg *seg)
 {
-    uint8_t *jump1, *jump2, *jump3, *jump4 = NULL;
+    uint8_t *jump1 = NULL;
+    uint8_t *jump2 = NULL;
+    uint8_t *jump3 = NULL;
+    uint8_t *jump4 = NULL;
     int      jump_pos;
 
     CHECK_SEG_WRITE(seg);

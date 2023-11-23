@@ -54,28 +54,35 @@
 #define STAT_IFULL    0x02
 #define STAT_OFULL    0x01
 
-// Keyboard Types
-#define KBD_TYPE_PC81     0
-#define KBD_TYPE_PC82     1
-#define KBD_TYPE_XT82     2
-#define KBD_TYPE_XT86     3
-#define KBD_TYPE_COMPAQ   4
-#define KBD_TYPE_TANDY    5
-#define KBD_TYPE_TOSHIBA  6
-#define KBD_TYPE_VTECH    7
-#define KBD_TYPE_OLIVETTI 8
-#define KBD_TYPE_ZENITH   9
-#define KBD_TYPE_PRAVETZ  10
-#define KBD_TYPE_XTCLONE  11
+/* Keyboard Types */
+enum {
+    KBD_TYPE_PC81 = 0,
+    KBD_TYPE_PC82,
+    KBD_TYPE_XT82,
+    KBD_TYPE_XT86,
+    KBD_TYPE_COMPAQ,
+    KBD_TYPE_TANDY,
+    KBD_TYPE_TOSHIBA,
+    KBD_TYPE_VTECH,
+    KBD_TYPE_OLIVETTI,
+    KBD_TYPE_ZENITH,
+    KBD_TYPE_PRAVETZ,
+    KBD_TYPE_HYUNDAI,
+    KBD_TYPE_XTCLONE
+};
 
-typedef struct {
+typedef struct xtkbd_t {
     int want_irq;
     int blocked;
     int tandy;
 
-    uint8_t pa, pb, pd, clock;
+    uint8_t pa;
+    uint8_t pb;
+    uint8_t pd;
+    uint8_t clock;
     uint8_t key_waiting;
-    uint8_t type, pravetz_flags;
+    uint8_t type;
+    uint8_t pravetz_flags;
 
     pc_timer_t send_delay_timer;
 } xtkbd_t;
@@ -343,10 +350,11 @@ const scancode scancode_xt[512] = {
 };
 
 static uint8_t key_queue[16];
-static int     key_queue_start = 0,
-           key_queue_end       = 0;
-static int is_tandy = 0, is_t1x00 = 0,
-           is_amstrad = 0;
+static int     key_queue_start = 0;
+static int     key_queue_end   = 0;
+static int     is_tandy = 0;
+static int     is_t1x00 = 0;
+static int     is_amstrad = 0;
 
 #ifdef ENABLE_KEYBOARD_XT_LOG
 int keyboard_xt_do_log = ENABLE_KEYBOARD_XT_LOG;
@@ -370,9 +378,9 @@ static uint8_t
 get_fdd_switch_settings(void)
 {
 
-    int i, fdd_count = 0;
+    uint8_t fdd_count = 0;
 
-    for (i = 0; i < FDD_NUM; i++) {
+    for (uint8_t i = 0; i < FDD_NUM; i++) {
         if (fdd_get_flags(i))
             fdd_count++;
     }
@@ -453,6 +461,9 @@ kbd_adddata(uint16_t val)
                 case 0x54: /* SysRQ => toggle window */
                     t1000_syskey(0x00, 0x00, 0x08);
                     break;
+
+                default:
+                    break;
             }
         } else
             t1000_syskey(0x04, 0x00, 0x00); /* Reset 'Fn' indicator */
@@ -467,7 +478,8 @@ kbd_adddata(uint16_t val)
 void
 kbd_adddata_process(uint16_t val, void (*adddata)(uint16_t val))
 {
-    uint8_t num_lock = 0, shift_states = 0;
+    uint8_t num_lock = 0;
+    uint8_t shift_states = 0;
 
     if (!adddata)
         return;
@@ -515,11 +527,13 @@ static void
 kbd_write(uint16_t port, uint8_t val, void *priv)
 {
     xtkbd_t *kbd = (xtkbd_t *) priv;
-    uint8_t  bit, set, new_clock;
+    uint8_t  bit;
+    uint8_t  set;
+    uint8_t  new_clock;
 
     switch (port) {
         case 0x61: /* Keyboard Control Register (aka Port B) */
-            if (!(val & 0x80)) {
+            if (!(val & 0x80) || (kbd->type == KBD_TYPE_HYUNDAI)) {
                 new_clock = !!(val & 0x40);
                 if (!kbd->clock && new_clock) {
                     key_queue_start = key_queue_end = 0;
@@ -529,14 +543,14 @@ kbd_write(uint16_t port, uint8_t val, void *priv)
                 }
             }
             kbd->pb = val;
-            if (!(kbd->pb & 0x80))
+            if (!(kbd->pb & 0x80) || (kbd->type == KBD_TYPE_HYUNDAI))
                 kbd->clock = !!(kbd->pb & 0x40);
             ppi.pb = val;
 
             timer_process();
 
-            if (((kbd->type == KBD_TYPE_PC81) || (kbd->type == KBD_TYPE_PC82) || (kbd->type == KBD_TYPE_PRAVETZ)) &&
-                (cassette != NULL))
+            if (((kbd->type == KBD_TYPE_PC81) || (kbd->type == KBD_TYPE_PC82) ||
+                (kbd->type == KBD_TYPE_PRAVETZ)) && (cassette != NULL))
                 pc_cas_set_motor(cassette, (kbd->pb & 0x08) == 0);
 
             speaker_update();
@@ -574,23 +588,33 @@ kbd_write(uint16_t port, uint8_t val, void *priv)
                 kbd->pravetz_flags = (kbd->pravetz_flags & ~(1 << bit)) | set;
             }
             break;
+
+        default:
+            break;
     }
 }
 
 static uint8_t
 kbd_read(uint16_t port, void *priv)
 {
-    xtkbd_t *kbd = (xtkbd_t *) priv;
-    uint8_t  ret = 0xff;
+    const xtkbd_t *kbd = (xtkbd_t *) priv;
+    uint8_t        ret = 0xff;
 
     switch (port) {
         case 0x60: /* Keyboard Data Register  (aka Port A) */
-            if ((kbd->pb & 0x80) && ((kbd->type == KBD_TYPE_PC81) || (kbd->type == KBD_TYPE_PC82) || (kbd->type == KBD_TYPE_PRAVETZ) || (kbd->type == KBD_TYPE_XT82) ||
-                (kbd->type == KBD_TYPE_XT86) || (kbd->type == KBD_TYPE_XTCLONE) || (kbd->type == KBD_TYPE_COMPAQ) || (kbd->type == KBD_TYPE_ZENITH))) {
-                if ((kbd->type == KBD_TYPE_PC81) || (kbd->type == KBD_TYPE_PC82) || (kbd->type == KBD_TYPE_XTCLONE) || (kbd->type == KBD_TYPE_COMPAQ) || (kbd->type == KBD_TYPE_PRAVETZ))
+            if ((kbd->pb & 0x80) && ((kbd->type == KBD_TYPE_PC81) ||
+                (kbd->type == KBD_TYPE_PC82) || (kbd->type == KBD_TYPE_PRAVETZ) ||
+                (kbd->type == KBD_TYPE_XT82) || (kbd->type == KBD_TYPE_XT86) ||
+                (kbd->type == KBD_TYPE_XTCLONE) || (kbd->type == KBD_TYPE_COMPAQ) ||
+                (kbd->type == KBD_TYPE_ZENITH) || (kbd->type == KBD_TYPE_HYUNDAI))) {
+                if ((kbd->type == KBD_TYPE_PC81) || (kbd->type == KBD_TYPE_PC82) ||
+                    (kbd->type == KBD_TYPE_XTCLONE) || (kbd->type == KBD_TYPE_COMPAQ) ||
+                    (kbd->type == KBD_TYPE_PRAVETZ) || (kbd->type == KBD_TYPE_HYUNDAI))
                     ret = (kbd->pd & ~0x02) | (hasfpu ? 0x02 : 0x00);
                 else if ((kbd->type == KBD_TYPE_XT82) || (kbd->type == KBD_TYPE_XT86))
-                    ret = 0xff; /* According to Ruud on the PCem forum, this is supposed to return 0xFF on the XT. */
+                    /* According to Ruud on the PCem forum, this is supposed to
+                       return 0xFF on the XT. */
+                    ret = 0xff;
                 else if (kbd->type == KBD_TYPE_ZENITH) {
                     /* Zenith Data Systems Z-151
                      * SW1 switch settings:
@@ -619,7 +643,8 @@ kbd_read(uint16_t port, void *priv)
             break;
 
         case 0x62: /* Switch Register (aka Port C) */
-            if ((kbd->type == KBD_TYPE_PC81) || (kbd->type == KBD_TYPE_PC82) || (kbd->type == KBD_TYPE_PRAVETZ)) {
+            if ((kbd->type == KBD_TYPE_PC81) || (kbd->type == KBD_TYPE_PC82) ||
+                (kbd->type == KBD_TYPE_PRAVETZ)) {
                 if (kbd->pb & 0x04) /* PB2 */
                     switch (mem_size + isa_mem_size) {
                         case 64:
@@ -634,8 +659,8 @@ kbd_read(uint16_t port, void *priv)
                     }
                 else
                     ret = (((mem_size + isa_mem_size) - 64) / 32) >> 4;
-            } else if (kbd->type == KBD_TYPE_OLIVETTI
-                       || kbd->type == KBD_TYPE_ZENITH) {
+            } else if ((kbd->type == KBD_TYPE_OLIVETTI) ||
+                       (kbd->type == KBD_TYPE_ZENITH)) {
                 /* Olivetti M19 or Zenith Data Systems Z-151 */
                 if (kbd->pb & 0x04) /* PB2 */
                     ret = kbd->pd & 0xbf;
@@ -648,7 +673,7 @@ kbd_read(uint16_t port, void *priv)
                     /* LaserXT = Always 512k RAM;
                        LaserXT/3 = Bit 0: set = 512k, clear = 256k. */
 #if defined(DEV_BRANCH) && defined(USE_LASERXT)
-                    if (kbd->type == KBD_TYPE_TOSHIBA)
+                    if (kbd->type == KBD_TYPE_VTECH)
                         ret = ((mem_size == 512) ? 0x0d : 0x0c) | (hasfpu ? 0x02 : 0x00);
                     else
 #endif
@@ -659,7 +684,8 @@ kbd_read(uint16_t port, void *priv)
 
             /* This is needed to avoid error 131 (cassette error).
                This is serial read: bit 5 = clock, bit 4 = data, cassette header is 256 x 0xff. */
-            if ((kbd->type == KBD_TYPE_PC81) || (kbd->type == KBD_TYPE_PC82) || (kbd->type == KBD_TYPE_PRAVETZ)) {
+            if ((kbd->type == KBD_TYPE_PC81) || (kbd->type == KBD_TYPE_PC82) ||
+                (kbd->type == KBD_TYPE_PRAVETZ)) {
                 if (cassette == NULL)
                     ret |= (ppispeakon ? 0x10 : 0);
                 else
@@ -673,7 +699,7 @@ kbd_read(uint16_t port, void *priv)
         case 0x63: /* Keyboard Configuration Register (aka Port D) */
             if ((kbd->type == KBD_TYPE_XT82) || (kbd->type == KBD_TYPE_XT86) ||
                 (kbd->type == KBD_TYPE_XTCLONE) || (kbd->type == KBD_TYPE_COMPAQ) ||
-                (kbd->type == KBD_TYPE_TOSHIBA))
+                (kbd->type == KBD_TYPE_TOSHIBA) || (kbd->type == KBD_TYPE_HYUNDAI))
                 ret = kbd->pd;
             break;
 
@@ -682,9 +708,12 @@ kbd_read(uint16_t port, void *priv)
                 ret = kbd->pravetz_flags;
             kbd_log("XTkbd: Port %02X in : %02X\n", port, ret);
             break;
+
+        default:
+            break;
     }
 
-    return (ret);
+    return ret;
 }
 
 static void
@@ -700,7 +729,7 @@ kbd_reset(void *priv)
 
     keyboard_scan = 1;
 
-    key_queue_start = 0,
+    key_queue_start = 0;
     key_queue_end   = 0;
 }
 
@@ -736,8 +765,7 @@ kbd_init(const device_t *info)
         (kbd->type == KBD_TYPE_PRAVETZ) || (kbd->type == KBD_TYPE_XT82) ||
         (kbd->type <= KBD_TYPE_XT86) || (kbd->type == KBD_TYPE_XTCLONE) ||
         (kbd->type == KBD_TYPE_COMPAQ) || (kbd->type == KBD_TYPE_TOSHIBA) ||
-        (kbd->type == KBD_TYPE_OLIVETTI)) {
-
+        (kbd->type == KBD_TYPE_OLIVETTI) || (kbd->type == KBD_TYPE_HYUNDAI)) {
         /* DIP switch readout: bit set = OFF, clear = ON. */
         if (kbd->type == KBD_TYPE_OLIVETTI)
             /* Olivetti M19
@@ -756,7 +784,8 @@ kbd_init(const device_t *info)
 
         /* Switches 3, 4 - memory size. */
         if ((kbd->type == KBD_TYPE_XT86) || (kbd->type == KBD_TYPE_XTCLONE) ||
-            (kbd->type == KBD_TYPE_COMPAQ) || (kbd->type == KBD_TYPE_TOSHIBA)) {
+            (kbd->type == KBD_TYPE_HYUNDAI) || (kbd->type == KBD_TYPE_COMPAQ) ||
+            (kbd->type == KBD_TYPE_TOSHIBA)) {
             switch (mem_size) {
                 case 256:
                     kbd->pd |= 0x00;
@@ -873,7 +902,7 @@ kbd_init(const device_t *info)
 
     is_amstrad = 0;
 
-    return (kbd);
+    return kbd;
 }
 
 static void
@@ -1042,6 +1071,20 @@ const device_t keyboard_xt_zenith_device = {
     .internal_name = "keyboard_xt_zenith",
     .flags         = 0,
     .local         = KBD_TYPE_ZENITH,
+    .init          = kbd_init,
+    .close         = kbd_close,
+    .reset         = kbd_reset,
+    { .available = NULL },
+    .speed_changed = NULL,
+    .force_redraw  = NULL,
+    .config        = NULL
+};
+
+const device_t keyboard_xt_hyundai_device = {
+    .name          = "Hyundai XT Keyboard",
+    .internal_name = "keyboard_x_hyundai",
+    .flags         = 0,
+    .local         = KBD_TYPE_HYUNDAI,
     .init          = kbd_init,
     .close         = kbd_close,
     .reset         = kbd_reset,

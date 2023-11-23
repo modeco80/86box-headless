@@ -6,13 +6,13 @@ opMOVSB_a16(uint32_t fetchdat)
     addr64 = addr64_2 = 0x00000000;
 
     SEG_CHECK_READ(cpu_state.ea_seg);
+    SEG_CHECK_WRITE(&cpu_state.seg_es);
     CHECK_READ(cpu_state.ea_seg, SI, SI);
+    CHECK_WRITE(&cpu_state.seg_es, DI, DI);
     high_page = 0;
     do_mmut_rb(cpu_state.ea_seg->base, SI, &addr64);
     if (cpu_state.abrt)
         return 1;
-    SEG_CHECK_WRITE(&cpu_state.seg_es);
-    CHECK_WRITE(&cpu_state.seg_es, DI, DI);
 
     do_mmut_wb(es, DI, &addr64_2);
     if (cpu_state.abrt)
@@ -42,13 +42,13 @@ opMOVSB_a32(uint32_t fetchdat)
     addr64 = addr64_2 = 0x00000000;
 
     SEG_CHECK_READ(cpu_state.ea_seg);
+    SEG_CHECK_WRITE(&cpu_state.seg_es);
     CHECK_READ(cpu_state.ea_seg, ESI, ESI);
+    CHECK_WRITE(&cpu_state.seg_es, EDI, EDI);
     high_page = 0;
     do_mmut_rb(cpu_state.ea_seg->base, ESI, &addr64);
     if (cpu_state.abrt)
         return 1;
-    SEG_CHECK_WRITE(&cpu_state.seg_es);
-    CHECK_WRITE(&cpu_state.seg_es, EDI, EDI);
     do_mmut_wb(es, EDI, &addr64_2);
     if (cpu_state.abrt)
         return 1;
@@ -79,13 +79,13 @@ opMOVSW_a16(uint32_t fetchdat)
     addr64a_2[0] = addr64a_2[1] = 0x00000000;
 
     SEG_CHECK_READ(cpu_state.ea_seg);
+    SEG_CHECK_WRITE(&cpu_state.seg_es);
     CHECK_READ(cpu_state.ea_seg, SI, SI + 1UL);
+    CHECK_WRITE(&cpu_state.seg_es, DI, DI + 1UL);
     high_page = 0;
     do_mmut_rw(cpu_state.ea_seg->base, SI, addr64a);
     if (cpu_state.abrt)
         return 1;
-    SEG_CHECK_WRITE(&cpu_state.seg_es);
-    CHECK_WRITE(&cpu_state.seg_es, DI, DI + 1UL);
     do_mmut_ww(es, DI, addr64a_2);
     if (cpu_state.abrt)
         return 1;
@@ -115,13 +115,13 @@ opMOVSW_a32(uint32_t fetchdat)
     addr64a_2[0] = addr64a_2[1] = 0x00000000;
 
     SEG_CHECK_READ(cpu_state.ea_seg);
+    SEG_CHECK_WRITE(&cpu_state.seg_es);
     CHECK_READ(cpu_state.ea_seg, ESI, ESI + 1UL);
+    CHECK_WRITE(&cpu_state.seg_es, EDI, EDI + 1UL);
     high_page = 0;
     do_mmut_rw(cpu_state.ea_seg->base, ESI, addr64a);
     if (cpu_state.abrt)
         return 1;
-    SEG_CHECK_WRITE(&cpu_state.seg_es);
-    CHECK_WRITE(&cpu_state.seg_es, EDI, EDI + 1UL);
     do_mmut_ww(es, EDI, addr64a_2);
     if (cpu_state.abrt)
         return 1;
@@ -152,13 +152,13 @@ opMOVSL_a16(uint32_t fetchdat)
     addr64a_2[0] = addr64a_2[1] = addr64a_2[2] = addr64a_2[3] = 0x00000000;
 
     SEG_CHECK_READ(cpu_state.ea_seg);
+    SEG_CHECK_WRITE(&cpu_state.seg_es);
     CHECK_READ(cpu_state.ea_seg, SI, SI + 3UL);
+    CHECK_WRITE(&cpu_state.seg_es, DI, DI + 3UL);
     high_page = 0;
     do_mmut_rl(cpu_state.ea_seg->base, SI, addr64a);
     if (cpu_state.abrt)
         return 1;
-    SEG_CHECK_WRITE(&cpu_state.seg_es);
-    CHECK_WRITE(&cpu_state.seg_es, DI, DI + 3UL);
     do_mmut_wl(es, DI, addr64a_2);
     if (cpu_state.abrt)
         return 1;
@@ -188,13 +188,13 @@ opMOVSL_a32(uint32_t fetchdat)
     addr64a_2[0] = addr64a_2[1] = addr64a_2[2] = addr64a_2[3] = 0x00000000;
 
     SEG_CHECK_READ(cpu_state.ea_seg);
+    SEG_CHECK_WRITE(&cpu_state.seg_es);
     CHECK_READ(cpu_state.ea_seg, ESI, ESI + 3UL);
+    CHECK_WRITE(&cpu_state.seg_es, EDI, EDI + 3UL);
     high_page = 0;
     do_mmut_rl(cpu_state.ea_seg->base, ESI, addr64a);
     if (cpu_state.abrt)
         return 1;
-    SEG_CHECK_WRITE(&cpu_state.seg_es);
-    CHECK_WRITE(&cpu_state.seg_es, EDI, EDI + 3UL);
     do_mmut_wl(es, EDI, addr64a_2);
     if (cpu_state.abrt)
         return 1;
@@ -219,18 +219,19 @@ opMOVSL_a32(uint32_t fetchdat)
 static int
 opCMPSB_a16(uint32_t fetchdat)
 {
-    uint8_t src, dst;
+    uint8_t src;
+    uint8_t dst;
 
     addr64 = addr64_2 = 0x00000000;
 
     SEG_CHECK_READ(cpu_state.ea_seg);
+    SEG_CHECK_READ(&cpu_state.seg_es);
     CHECK_READ(cpu_state.ea_seg, SI, SI);
+    CHECK_READ(&cpu_state.seg_es, DI, DI);
     high_page = uncached = 0;
     do_mmut_rb(cpu_state.ea_seg->base, SI, &addr64);
     if (cpu_state.abrt)
         return 1;
-    SEG_CHECK_READ(&cpu_state.seg_es);
-    CHECK_READ(&cpu_state.seg_es, DI, DI);
     do_mmut_rb2(es, DI, &addr64_2);
     if (cpu_state.abrt)
         return 1;
@@ -259,18 +260,19 @@ opCMPSB_a16(uint32_t fetchdat)
 static int
 opCMPSB_a32(uint32_t fetchdat)
 {
-    uint8_t src, dst;
+    uint8_t src;
+    uint8_t dst;
 
     addr64 = addr64_2 = 0x00000000;
 
     SEG_CHECK_READ(cpu_state.ea_seg);
+    SEG_CHECK_READ(&cpu_state.seg_es);
     CHECK_READ(cpu_state.ea_seg, ESI, ESI);
+    CHECK_READ(&cpu_state.seg_es, EDI, EDI);
     high_page = uncached = 0;
     do_mmut_rb(cpu_state.ea_seg->base, ESI, &addr64);
     if (cpu_state.abrt)
         return 1;
-    SEG_CHECK_READ(&cpu_state.seg_es);
-    CHECK_READ(&cpu_state.seg_es, EDI, EDI);
     do_mmut_rb2(es, EDI, &addr64_2);
     if (cpu_state.abrt)
         return 1;
@@ -300,19 +302,20 @@ opCMPSB_a32(uint32_t fetchdat)
 static int
 opCMPSW_a16(uint32_t fetchdat)
 {
-    uint16_t src, dst;
+    uint16_t src;
+    uint16_t dst;
 
     addr64a[0] = addr64a[1] = 0x00000000;
     addr64a_2[0] = addr64a_2[1] = 0x00000000;
 
     SEG_CHECK_READ(cpu_state.ea_seg);
+    SEG_CHECK_READ(&cpu_state.seg_es);
     CHECK_READ(cpu_state.ea_seg, SI, SI + 1UL);
+    CHECK_READ(&cpu_state.seg_es, DI, DI + 1UL);
     high_page = uncached = 0;
     do_mmut_rw(cpu_state.ea_seg->base, SI, addr64a);
     if (cpu_state.abrt)
         return 1;
-    SEG_CHECK_READ(&cpu_state.seg_es);
-    CHECK_READ(&cpu_state.seg_es, DI, DI + 1UL);
     do_mmut_rw2(es, DI, addr64a_2);
     if (cpu_state.abrt)
         return 1;
@@ -341,19 +344,20 @@ opCMPSW_a16(uint32_t fetchdat)
 static int
 opCMPSW_a32(uint32_t fetchdat)
 {
-    uint16_t src, dst;
+    uint16_t src;
+    uint16_t dst;
 
     addr64a[0] = addr64a[1] = 0x00000000;
     addr64a_2[0] = addr64a_2[1] = 0x00000000;
 
     SEG_CHECK_READ(cpu_state.ea_seg);
+    SEG_CHECK_READ(&cpu_state.seg_es);
     CHECK_READ(cpu_state.ea_seg, ESI, ESI + 1UL);
+    CHECK_READ(&cpu_state.seg_es, EDI, EDI + 1UL);
     high_page = uncached = 0;
     do_mmut_rw(cpu_state.ea_seg->base, ESI, addr64a);
     if (cpu_state.abrt)
         return 1;
-    SEG_CHECK_READ(&cpu_state.seg_es);
-    CHECK_READ(&cpu_state.seg_es, EDI, EDI + 1UL);
     do_mmut_rw2(es, EDI, addr64a_2);
     if (cpu_state.abrt)
         return 1;
@@ -383,19 +387,20 @@ opCMPSW_a32(uint32_t fetchdat)
 static int
 opCMPSL_a16(uint32_t fetchdat)
 {
-    uint32_t src, dst;
+    uint32_t src;
+    uint32_t dst;
 
     addr64a[0] = addr64a[1] = addr64a[2] = addr64a[3] = 0x00000000;
     addr64a_2[0] = addr64a_2[1] = addr64a_2[2] = addr64a_2[3] = 0x00000000;
 
     SEG_CHECK_READ(cpu_state.ea_seg);
+    SEG_CHECK_READ(&cpu_state.seg_es);
     CHECK_READ(cpu_state.ea_seg, SI, SI + 3UL);
+    CHECK_READ(&cpu_state.seg_es, DI, DI + 3UL);
     high_page = uncached = 0;
     do_mmut_rl(cpu_state.ea_seg->base, SI, addr64a);
     if (cpu_state.abrt)
         return 1;
-    SEG_CHECK_READ(&cpu_state.seg_es);
-    CHECK_READ(&cpu_state.seg_es, DI, DI + 3UL);
     do_mmut_rl2(es, DI, addr64a_2);
     if (cpu_state.abrt)
         return 1;
@@ -424,19 +429,20 @@ opCMPSL_a16(uint32_t fetchdat)
 static int
 opCMPSL_a32(uint32_t fetchdat)
 {
-    uint32_t src, dst;
+    uint32_t src;
+    uint32_t dst;
 
     addr64a[0] = addr64a[1] = addr64a[2] = addr64a[3] = 0x00000000;
     addr64a_2[0] = addr64a_2[1] = addr64a_2[2] = addr64a_2[3] = 0x00000000;
 
     SEG_CHECK_READ(cpu_state.ea_seg);
+    SEG_CHECK_READ(&cpu_state.seg_es);
     CHECK_READ(cpu_state.ea_seg, ESI, ESI + 3UL);
+    CHECK_READ(&cpu_state.seg_es, EDI, EDI + 3UL);
     high_page = uncached = 0;
     do_mmut_rl(cpu_state.ea_seg->base, ESI, addr64a);
     if (cpu_state.abrt)
         return 1;
-    SEG_CHECK_READ(&cpu_state.seg_es);
-    CHECK_READ(&cpu_state.seg_es, EDI, EDI + 3UL);
     do_mmut_rl2(es, EDI, addr64a_2);
     if (cpu_state.abrt)
         return 1;
@@ -804,7 +810,7 @@ opINSB_a16(uint32_t fetchdat)
     addr64 = 0x00000000;
 
     SEG_CHECK_WRITE(&cpu_state.seg_es);
-    check_io_perm(DX);
+    check_io_perm(DX, 1);
     CHECK_WRITE(&cpu_state.seg_es, DI, DI);
     high_page = 0;
     do_mmut_wb(es, DI, &addr64);
@@ -830,7 +836,7 @@ opINSB_a32(uint32_t fetchdat)
     addr64 = 0x00000000;
 
     SEG_CHECK_WRITE(&cpu_state.seg_es);
-    check_io_perm(DX);
+    check_io_perm(DX, 1);
     high_page = 0;
     CHECK_WRITE(&cpu_state.seg_es, EDI, EDI);
     do_mmut_wb(es, EDI, &addr64);
@@ -857,8 +863,7 @@ opINSW_a16(uint32_t fetchdat)
     addr64a[0] = addr64a[1] = 0x00000000;
 
     SEG_CHECK_WRITE(&cpu_state.seg_es);
-    check_io_perm(DX);
-    check_io_perm(DX + 1);
+    check_io_perm(DX, 2);
     CHECK_WRITE(&cpu_state.seg_es, DI, DI + 1UL);
     high_page = 0;
     do_mmut_ww(es, DI, addr64a);
@@ -885,8 +890,7 @@ opINSW_a32(uint32_t fetchdat)
 
     SEG_CHECK_WRITE(&cpu_state.seg_es);
     high_page = 0;
-    check_io_perm(DX);
-    check_io_perm(DX + 1);
+    check_io_perm(DX, 2);
     CHECK_WRITE(&cpu_state.seg_es, EDI, EDI + 1UL);
     do_mmut_ww(es, EDI, addr64a);
     if (cpu_state.abrt)
@@ -912,10 +916,7 @@ opINSL_a16(uint32_t fetchdat)
     addr64a[0] = addr64a[1] = addr64a[2] = addr64a[3] = 0x00000000;
 
     SEG_CHECK_WRITE(&cpu_state.seg_es);
-    check_io_perm(DX);
-    check_io_perm(DX + 1);
-    check_io_perm(DX + 2);
-    check_io_perm(DX + 3);
+    check_io_perm(DX, 4);
     CHECK_WRITE(&cpu_state.seg_es, DI, DI + 3UL);
     high_page = 0;
     do_mmut_wl(es, DI, addr64a);
@@ -941,10 +942,7 @@ opINSL_a32(uint32_t fetchdat)
     addr64a[0] = addr64a[1] = addr64a[2] = addr64a[3] = 0x00000000;
 
     SEG_CHECK_WRITE(&cpu_state.seg_es);
-    check_io_perm(DX);
-    check_io_perm(DX + 1);
-    check_io_perm(DX + 2);
-    check_io_perm(DX + 3);
+    check_io_perm(DX, 4);
     CHECK_WRITE(&cpu_state.seg_es, EDI, EDI + 3UL);
     high_page = 0;
     do_mmut_wl(es, DI, addr64a);
@@ -973,7 +971,7 @@ opOUTSB_a16(uint32_t fetchdat)
     temp = readmemb(cpu_state.ea_seg->base, SI);
     if (cpu_state.abrt)
         return 1;
-    check_io_perm(DX);
+    check_io_perm(DX, 1);
     if (cpu_state.flags & D_FLAG)
         SI--;
     else
@@ -993,7 +991,7 @@ opOUTSB_a32(uint32_t fetchdat)
     temp = readmemb(cpu_state.ea_seg->base, ESI);
     if (cpu_state.abrt)
         return 1;
-    check_io_perm(DX);
+    check_io_perm(DX, 1);
     if (cpu_state.flags & D_FLAG)
         ESI--;
     else
@@ -1014,8 +1012,7 @@ opOUTSW_a16(uint32_t fetchdat)
     temp = readmemw(cpu_state.ea_seg->base, SI);
     if (cpu_state.abrt)
         return 1;
-    check_io_perm(DX);
-    check_io_perm(DX + 1);
+    check_io_perm(DX, 2);
     if (cpu_state.flags & D_FLAG)
         SI -= 2;
     else
@@ -1035,8 +1032,7 @@ opOUTSW_a32(uint32_t fetchdat)
     temp = readmemw(cpu_state.ea_seg->base, ESI);
     if (cpu_state.abrt)
         return 1;
-    check_io_perm(DX);
-    check_io_perm(DX + 1);
+    check_io_perm(DX, 2);
     if (cpu_state.flags & D_FLAG)
         ESI -= 2;
     else
@@ -1057,10 +1053,7 @@ opOUTSL_a16(uint32_t fetchdat)
     temp = readmeml(cpu_state.ea_seg->base, SI);
     if (cpu_state.abrt)
         return 1;
-    check_io_perm(DX);
-    check_io_perm(DX + 1);
-    check_io_perm(DX + 2);
-    check_io_perm(DX + 3);
+    check_io_perm(DX, 4);
     if (cpu_state.flags & D_FLAG)
         SI -= 4;
     else
@@ -1080,10 +1073,7 @@ opOUTSL_a32(uint32_t fetchdat)
     temp = readmeml(cpu_state.ea_seg->base, ESI);
     if (cpu_state.abrt)
         return 1;
-    check_io_perm(DX);
-    check_io_perm(DX + 1);
-    check_io_perm(DX + 2);
-    check_io_perm(DX + 3);
+    check_io_perm(DX, 4);
     if (cpu_state.flags & D_FLAG)
         ESI -= 4;
     else

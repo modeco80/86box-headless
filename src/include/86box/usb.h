@@ -1,18 +1,18 @@
 /*
- * 86Box    A hypervisor and IBM PC system emulator that specializes in
- *          running old operating systems and software designed for IBM
- *          PC systems and compatibles from 1981 through fairly recent
- *          system designs based on the PCI bus.
+ * 86Box	A hypervisor and IBM PC system emulator that specializes in
+ *		running old operating systems and software designed for IBM
+ *		PC systems and compatibles from 1981 through fairly recent
+ *		system designs based on the PCI bus.
  *
- *          This file is part of the 86Box distribution.
+ *		This file is part of the 86Box distribution.
  *
- *          Definitions for the Distributed DMA emulation.
+ *		Definitions for the Distributed DMA emulation.
  *
  *
  *
- * Authors: Miran Grca, <mgrca8@gmail.com>
+ * Authors:	Miran Grca, <mgrca8@gmail.com>
  *
- *          Copyright 2020 Miran Grca.
+ *		Copyright 2020 Miran Grca.
  */
 
 #ifndef USB_H
@@ -22,11 +22,12 @@
 extern "C" {
 #endif
 
-typedef struct
-{
-    uint8_t       uhci_io[32], ohci_mmio[4096];
+typedef struct usb_t {
+    uint8_t       uhci_io[32];
+    uint8_t       ohci_mmio[4096];
     uint16_t      uhci_io_base;
-    int           uhci_enable, ohci_enable;
+    int           uhci_enable;
+    int           ohci_enable;
     uint32_t      ohci_mem_base;
     mem_mapping_t ohci_mmio_mapping;
 } usb_t;

@@ -23,8 +23,10 @@
 #include <86box/86box.h>
 #include <86box/device.h>
 #include <86box/hdd.h>
+#include <86box/hdc_ide.h>
 #include <86box/scsi.h>
 #include <86box/scsi_device.h>
+#include <86box/plat_unused.h>
 
 scsi_device_t scsi_devices[SCSI_BUS_MAX][SCSI_ID_MAX];
 
@@ -36,7 +38,7 @@ scsi_device_target_command(scsi_device_t *dev, uint8_t *cdb)
     if (dev->command) {
         dev->command(dev->sc, cdb);
 
-        if (dev->sc->status & ERR_STAT)
+        if (dev->sc->tf->status & ERR_STAT)
             return SCSI_STATUS_CHECK_CONDITION;
         else
             return SCSI_STATUS_OK;
@@ -97,7 +99,7 @@ scsi_device_valid(scsi_device_t *dev)
 }
 
 int
-scsi_device_cdb_length(scsi_device_t *dev)
+scsi_device_cdb_length(UNUSED(scsi_device_t *dev))
 {
     /* Right now, it's 12 for all devices. */
     return 12;
@@ -139,7 +141,7 @@ scsi_device_command_phase1(scsi_device_t *dev)
     } else
         scsi_device_command_stop(dev);
 
-    if (dev->sc->status & ERR_STAT)
+    if (dev->sc->tf->status & ERR_STAT)
         dev->status = SCSI_STATUS_CHECK_CONDITION;
     else
         dev->status = SCSI_STATUS_OK;
@@ -162,11 +164,10 @@ scsi_device_identify(scsi_device_t *dev, uint8_t lun)
 void
 scsi_device_close_all(void)
 {
-    int            i, j;
     scsi_device_t *dev;
 
-    for (i = 0; i < SCSI_BUS_MAX; i++) {
-        for (j = 0; j < SCSI_ID_MAX; j++) {
+    for (uint8_t i = 0; i < SCSI_BUS_MAX; i++) {
+        for (uint8_t j = 0; j < SCSI_ID_MAX; j++) {
             dev = &(scsi_devices[i][j]);
             if (dev->command_stop && dev->sc)
                 dev->command_stop(dev->sc);
@@ -177,11 +178,10 @@ scsi_device_close_all(void)
 void
 scsi_device_init(void)
 {
-    int            i, j;
     scsi_device_t *dev;
 
-    for (i = 0; i < SCSI_BUS_MAX; i++) {
-        for (j = 0; j < SCSI_ID_MAX; j++) {
+    for (uint8_t i = 0; i < SCSI_BUS_MAX; i++) {
+        for (uint8_t j = 0; j < SCSI_ID_MAX; j++) {
             dev = &(scsi_devices[i][j]);
 
             memset(dev, 0, sizeof(scsi_device_t));

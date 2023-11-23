@@ -13,6 +13,7 @@
  * Authors: Laci bá'
  *
  *          Copyright 2021 Laci bá'
+ *          Copyright 2021-2023 Jasmine Iwanek.
  */
 #define UNICODE
 #define BITMAP WINDOWS_BITMAP
@@ -38,12 +39,13 @@ static LCID temp_language;
 
 static char temp_icon_set[256] = { 0 };
 
-int enum_helper, c;
+int enum_helper;
+int c;
 
 HWND hwndPreferences;
 
 BOOL CALLBACK
-EnumResLangProc(HMODULE hModule, LPCTSTR lpszType, LPCTSTR lpszName, WORD wIDLanguage, LONG_PTR lParam)
+EnumResLangProc(UNUSED(HMODULE hModule), UNUSED(LPCTSTR lpszType), UNUSED(LPCTSTR lpszName), WORD wIDLanguage, LONG_PTR lParam)
 {
     wchar_t temp[LOCALE_NAME_MAX_LENGTH + 1];
     LCIDToLocaleName(wIDLanguage, temp, LOCALE_NAME_MAX_LENGTH, 0);
@@ -112,7 +114,8 @@ preferences_fill_iconsets(HWND hdlg)
     if (hFind != INVALID_HANDLE_VALUE) {
         do {
             if (wcscmp(data.cFileName, L".") && wcscmp(data.cFileName, L"..") && (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-                wchar_t temp[512] = { 0 }, dispname[512] = { 0 };
+                wchar_t temp[512]     = { 0 };
+                wchar_t dispname[512] = { 0 };
                 mbstoc16s(temp, icon_path_root, strlen(icon_path_root) + 1);
                 wcscat(temp, data.cFileName);
                 wcscat(temp, L"\\iconinfo.txt");
@@ -166,8 +169,7 @@ preferences_settings_changed(void)
 static int
 preferences_indexof(HWND combo, LPARAM itemdata)
 {
-    int i;
-    for (i = 0; i < SendMessage(combo, CB_GETCOUNT, 0, 0); i++)
+    for (int i = 0; i < SendMessage(combo, CB_GETCOUNT, 0, 0); i++)
         if (SendMessage(combo, CB_GETITEMDATA, i, 0) == itemdata)
             return i;
 
@@ -203,7 +205,7 @@ static LRESULT CALLBACK
 #else
 static BOOL CALLBACK
 #endif
-PreferencesDlgProcedure(HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam)
+PreferencesDlgProcedure(HWND hdlg, UINT message, WPARAM wParam, UNUSED(LPARAM lParam))
 {
     switch (message) {
         case WM_INITDIALOG:
@@ -265,10 +267,9 @@ PreferencesDlgProcedure(HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam)
 
         case WM_DESTROY:
             {
-                int     i;
                 LRESULT temp;
                 HWND    combo = GetDlgItem(hdlg, IDC_COMBO_ICON);
-                for (i = 0; i < SendMessage(combo, CB_GETCOUNT, 0, 0); i++) {
+                for (int i = 0; i < SendMessage(combo, CB_GETCOUNT, 0, 0); i++) {
                     temp = SendMessage(combo, CB_GETITEMDATA, i, 0);
                     if (temp) {
                         free((void *) temp);
@@ -279,7 +280,7 @@ PreferencesDlgProcedure(HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam)
             break;
     }
 
-    return (FALSE);
+    return FALSE;
 }
 
 void

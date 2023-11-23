@@ -12,7 +12,8 @@
 extern int       has_ea;
 static ir_data_t ir_block;
 
-static int codegen_unroll_start, codegen_unroll_count;
+static int codegen_unroll_start;
+static int codegen_unroll_count;
 static int codegen_unroll_first_instruction;
 
 ir_data_t *
@@ -64,13 +65,12 @@ codegen_ir_compile(ir_data_t *ir, codeblock_t *block)
     int c;
 
     if (codegen_unroll_count) {
-        int unroll_count;
         int unroll_end;
 
         codegen_set_loop_start(ir, codegen_unroll_first_instruction);
         unroll_end = ir->wr_pos;
 
-        for (unroll_count = 1; unroll_count < codegen_unroll_count; unroll_count++) {
+        for (int unroll_count = 1; unroll_count < codegen_unroll_count; unroll_count++) {
             int offset = ir->wr_pos - codegen_unroll_start;
             //                        pclog("Unroll from %i to %i, offset %i - iteration %i\n", codegen_unroll_start, ir->wr_pos, offset, unroll_count);
             for (c = codegen_unroll_start; c < unroll_end; c++) {
@@ -189,6 +189,8 @@ codegen_ir_compile(ir_data_t *ir, codeblock_t *block)
 
     codegen_backend_epilogue(block);
     block_write_data = NULL;
-    //        if (has_ea)
-    //                fatal("IR compilation complete\n");
+#if 0
+    if (has_ea)
+        fatal("IR compilation complete\n");
+#endif
 }

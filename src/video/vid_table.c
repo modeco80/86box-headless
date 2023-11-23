@@ -36,8 +36,9 @@
 #include <86box/vid_ega.h>
 #include <86box/vid_colorplus.h>
 #include <86box/vid_mda.h>
+#include <86box/vid_xga_device.h>
 
-typedef struct {
+typedef struct video_card_t {
     const device_t *device;
     int             flags;
 } VIDEO_CARD;
@@ -79,6 +80,8 @@ video_cards[] = {
     { &vid_none_device                               },
     { &vid_internal_device                           },
     { &atiega_device                                 },
+    { &mach8_isa_device,        VIDEO_FLAG_TYPE_8514 },
+    { &mach32_isa_device,       VIDEO_FLAG_TYPE_8514 },
     { &mach64gx_isa_device                           },
     { &ati28800k_device                              },
     { &ati18800_vga88_device                         },
@@ -112,6 +115,7 @@ video_cards[] = {
     { &hercules_device,          VIDEO_FLAG_TYPE_MDA },
     { &herculesplus_device,      VIDEO_FLAG_TYPE_MDA },
     { &incolor_device                                },
+    { &inmos_isa_device,         VIDEO_FLAG_TYPE_XGA },
     { &im1024_device                                 },
     { &iskra_ega_device                              },
     { &et4000_kasan_isa_device                       },
@@ -150,10 +154,12 @@ video_cards[] = {
     { &vga_device                                    },
     { &v7_vga_1024i_device                           },
     { &wy700_device                                  },
+    { &mach32_mca_device,       VIDEO_FLAG_TYPE_8514 },
     { &gd5426_mca_device                             },
     { &gd5428_mca_device                             },
     { &et4000_mca_device                             },
     { &radius_svga_multiview_mca_device              },
+    { &mach32_pci_device,       VIDEO_FLAG_TYPE_8514 },
     { &mach64gx_pci_device                           },
     { &mach64vt2_device                              },
     { &et4000w32p_videomagic_revb_pci_device         },
@@ -199,7 +205,7 @@ video_cards[] = {
     { &s3_diamond_stealth_4000_pci_device            },
     { &s3_trio3d2x_pci_device                        },
 #if defined(DEV_BRANCH) && defined(USE_MGA)
-    { &millennium_device                             },
+    { &millennium_device,    VIDEO_FLAG_TYPE_SPECIAL },
     { &mystique_device                               },
     { &mystique_220_device                           },
 #endif
@@ -211,6 +217,7 @@ video_cards[] = {
     { &voodoo_3_1000_device                          },
     { &voodoo_3_2000_device                          },
     { &voodoo_3_3000_device                          },
+    { &mach32_vlb_device,       VIDEO_FLAG_TYPE_8514 },
     { &mach64gx_vlb_device                           },
     { &et4000w32i_vlb_device                         },
     { &et4000w32p_videomagic_revb_vlb_device         },
@@ -337,8 +344,16 @@ video_reset(int card)
     monitor_index_global = 0;
     loadfont("roms/video/mda/mda.rom", 0);
 
+    if ((card != VID_NONE) && !machine_has_flags(machine, MACHINE_VIDEO_ONLY) &&
+        (gfxcard[1] > VID_INTERNAL) && device_is_valid(video_card_getdevice(gfxcard[1]), machine)) {
+        video_monitor_init(1);
+        monitor_index_global = 1;
+        device_add(video_cards[gfxcard[1]].device);
+        monitor_index_global = 0;
+    }
+
     /* Do not initialize internal cards here. */
-    if (!(card == VID_NONE) && !(card == VID_INTERNAL) && !machine_has_flags(machine, MACHINE_VIDEO_ONLY)) {
+    if ((card > VID_INTERNAL) && !machine_has_flags(machine, MACHINE_VIDEO_ONLY)) {
         vid_table_log("VIDEO: initializing '%s'\n", video_cards[card].device->name);
 
         video_prepare();
@@ -347,21 +362,40 @@ video_reset(int card)
         device_add(video_cards[card].device);
     }
 
-    if (!(card == VID_NONE)
-        && !machine_has_flags(machine, MACHINE_VIDEO_ONLY)
-        && gfxcard[1] != 0
-        && device_is_valid(video_card_getdevice(gfxcard[1]), machine)) {
-        video_monitor_init(1);
-        monitor_index_global = 1;
-        device_add(video_cards[gfxcard[1]].device);
-        monitor_index_global = 0;
-    }
+    was_reset = 1;
+}
 
+void
+video_post_reset(void)
+{
+    int ibm8514_has_vga = 0;
+    if (gfxcard[0] == VID_INTERNAL)
+        ibm8514_has_vga = (video_get_type_monitor(0) == VIDEO_FLAG_TYPE_8514);
+    else if (gfxcard[0] != VID_NONE)
+        ibm8514_has_vga = (video_card_get_flags(gfxcard[0]) == VIDEO_FLAG_TYPE_8514);
+    else
+        ibm8514_has_vga = 0;
+
+    if (ibm8514_has_vga)
+        ibm8514_active = 1;
+
+    if (ibm8514_standalone_enabled)
+        ibm8514_device_add();
+
+    if (xga_standalone_enabled)
+        xga_device_add();
+
+    /* Reset the graphics card (or do nothing if it was already done
+       by the machine's init function). */
+    video_reset(gfxcard[0]);
+}
+
+void
+video_voodoo_init(void)
+{
     /* Enable the Voodoo if configured. */
     if (voodoo_enabled)
         device_add(&voodoo_device);
-
-    was_reset = 1;
 }
 
 int
@@ -370,7 +404,7 @@ video_card_available(int card)
     if (video_cards[card].device)
         return (device_available(video_cards[card].device));
 
-    return (1);
+    return 1;
 }
 
 int
@@ -389,12 +423,12 @@ int
 video_card_has_config(int card)
 {
     if (video_cards[card].device == NULL)
-        return (0);
+        return 0;
 
     return (device_has_config(video_cards[card].device) ? 1 : 0);
 }
 
-char *
+const char *
 video_get_internal_name(int card)
 {
     return device_get_internal_name(video_cards[card].device);
@@ -406,12 +440,12 @@ video_get_video_from_internal_name(char *s)
     int c = 0;
 
     while (video_cards[c].device != NULL) {
-        if (!strcmp((char *) video_cards[c].device->internal_name, s))
-            return (c);
+        if (!strcmp(video_cards[c].device->internal_name, s))
+            return c;
         c++;
     }
 
-    return (0);
+    return 0;
 }
 
 int
@@ -430,4 +464,16 @@ int
 video_is_ega_vga(void)
 {
     return (video_get_type() == VIDEO_FLAG_TYPE_SPECIAL);
+}
+
+int
+video_is_8514(void)
+{
+    return (video_get_type() == VIDEO_FLAG_TYPE_8514);
+}
+
+int
+video_is_xga(void)
+{
+    return (video_get_type() == VIDEO_FLAG_TYPE_XGA);
 }

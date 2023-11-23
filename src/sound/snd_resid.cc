@@ -7,6 +7,8 @@
 #include <86box/plat.h>
 #include <86box/snd_resid.h>
 
+#define RESID_FREQ 48000
+
 typedef struct psid_t {
     /* resid sid implementation */
     SIDFP  *sid;
@@ -18,13 +20,16 @@ psid_t *psid;
 void *
 sid_init(void)
 {
-    //    psid_t *psid;
-    int             c;
+#if 0
+    psid_t *psid;
+#endif
     sampling_method method         = SAMPLE_INTERPOLATE;
     float           cycles_per_sec = 14318180.0 / 16.0;
 
     psid = new psid_t;
-    //    psid = (psid_t *)malloc(sizeof(sound_t));
+#if 0
+    psid = (psid_t *)malloc(sizeof(sound_t));
+#endif
     psid->sid = new SIDFP;
 
     psid->sid->set_chip_model(MOS8580FP);
@@ -38,12 +43,14 @@ sid_init(void)
 
     psid->sid->reset();
 
-    for (c = 0; c < 32; c++)
+    for (uint8_t c = 0; c < 32; c++)
         psid->sid->write(c, 0);
 
-    if (!psid->sid->set_sampling_parameters((float) cycles_per_sec, method,
-                                            (float) 48000, 0.9 * 48000.0 / 2.0)) {
-        //        printf("reSID failed!\n");
+    if (!psid->sid->set_sampling_parameters(cycles_per_sec, method,
+                                            (float) RESID_FREQ, 0.9 * (float) RESID_FREQ / 2.0)) {
+#if 0
+        printf("reSID failed!\n");
+#endif
     }
 
     psid->sid->set_chip_model(MOS6581FP);
@@ -57,43 +64,54 @@ sid_init(void)
 }
 
 void
-sid_close(UNUSED(void *p))
+sid_close(UNUSED(void *priv))
 {
-    //    psid_t *psid = (psid_t *)p;
+#if 0
+    psid_t *psid = (psid_t *) priv;
+#endif
     delete psid->sid;
-    //    free(psid);
+#if 0
+    free(psid);
+#endif
 }
 
 void
-sid_reset(UNUSED(void *p))
+sid_reset(UNUSED(void *priv))
 {
-    //    psid_t *psid = (psid_t *)p;
-    int c;
+#if 0
+    psid_t *psid = (psid_t *) priv;
+#endif
 
     psid->sid->reset();
 
-    for (c = 0; c < 32; c++)
+    for (uint8_t c = 0; c < 32; c++)
         psid->sid->write(c, 0);
 }
 
 uint8_t
-sid_read(uint16_t addr, UNUSED(void *p))
+sid_read(uint16_t addr, UNUSED(void *priv))
 {
-    //    psid_t *psid = (psid_t *)p;
+#if 0
+    psid_t *psid = (psid_t *) priv;
+#endif
 
     return psid->sid->read(addr & 0x1f);
-    //    return 0xFF;
+#if 0
+    return 0xFF;
+#endif
 }
 
 void
-sid_write(uint16_t addr, uint8_t val, UNUSED(void *p))
+sid_write(uint16_t addr, uint8_t val, UNUSED(void *priv))
 {
-    //    psid_t *psid = (psid_t *)p;
+#if 0
+    psid_t *psid = (psid_t *) priv;
+#endif
 
     psid->sid->write(addr & 0x1f, val);
 }
 
-#define CLOCK_DELTA(n) (int) (((14318180.0 * n) / 16.0) / 48000.0)
+#define CLOCK_DELTA(n) (int) (((14318180.0 * n) / 16.0) / (float) RESID_FREQ)
 
 static void
 fillbuf2(int &count, int16_t *buf, int len)
@@ -105,9 +123,11 @@ fillbuf2(int &count, int16_t *buf, int len)
     psid->last_sample = *buf;
 }
 void
-sid_fillbuf(int16_t *buf, int len, UNUSED(void *p))
+sid_fillbuf(int16_t *buf, int len, UNUSED(void *priv))
 {
-    //    psid_t *psid = (psid_t *)p;
+#if 0
+    psid_t *psid = (psid_t *) priv;
+#endif
     int x = CLOCK_DELTA(len);
 
     fillbuf2(x, buf, len);

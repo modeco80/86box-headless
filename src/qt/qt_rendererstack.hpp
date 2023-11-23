@@ -6,6 +6,7 @@
 #include <QKeyEvent>
 #include <QStackedWidget>
 #include <QWidget>
+#include <QCursor>
 
 #include <atomic>
 #include <memory>
@@ -30,6 +31,11 @@ public:
     void mouseReleaseEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    void enterEvent(QEnterEvent *event) override;
+#else
+    void enterEvent(QEvent *event) override;
+#endif
     void leaveEvent(QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
     void changeEvent(QEvent *event) override;
@@ -45,6 +51,7 @@ public:
     {
         event->ignore();
     }
+    bool event(QEvent* event) override;
 
     enum class Renderer {
         Software,
@@ -64,20 +71,12 @@ public:
     /* Returns options dialog for current renderer */
     QDialog *getOptions(QWidget *parent) { return rendererWindow ? rendererWindow->getOptions(parent) : nullptr; }
 
-    void setFocusRenderer()
-    {
-        if (current)
-            current->setFocus();
-    }
-    void onResize(int width, int height)
-    {
-        if (rendererWindow)
-            rendererWindow->onResize(width, height);
-    }
+    void setFocusRenderer();
+    void onResize(int width, int height);
 
-    void (*mouse_poll_func)()                   = nullptr;
     void (*mouse_capture_func)(QWindow *window) = nullptr;
     void (*mouse_uncapture_func)()              = nullptr;
+
     void (*mouse_exit_func)()                   = nullptr;
 
 signals:
@@ -89,14 +88,20 @@ public slots:
     void blitCommon(int x, int y, int w, int h);
     void blitRenderer(int x, int y, int w, int h);
     void blitDummy(int x, int y, int w, int h);
-    void mousePoll();
 
 private:
     void createRenderer(Renderer renderer);
 
     Ui::RendererStack *ui;
 
-    int x, y, w, h, sx, sy, sw, sh;
+    int x;
+    int y;
+    int w;
+    int h;
+    int sx;
+    int sy;
+    int sw;
+    int sh;
 
     int currentBuf      = 0;
     int isMouseDown     = 0;

@@ -11,8 +11,11 @@
 #    include "x86.h"
 #    include "x86_flags.h"
 #    include "x86_ops.h"
+#    include "x86seg_common.h"
+#    include "x86seg.h"
 #    include "x87.h"
 #    include <86box/mem.h>
+#    include <86box/plat_unused.h>
 
 #    include "386_common.h"
 
@@ -29,7 +32,8 @@
 #        include <windows.h>
 #    endif
 
-int      codegen_flat_ds, codegen_flat_ss;
+int      codegen_flat_ds;
+int      codegen_flat_ss;
 int      codegen_flags_changed = 0;
 int      codegen_fpu_entered   = 0;
 int      codegen_fpu_loaded_iq[8];
@@ -63,8 +67,6 @@ static int      last_ssegs;
 void
 codegen_init(void)
 {
-    int c;
-
 #    if _WIN64
     codeblock = VirtualAlloc(NULL, BLOCK_SIZE * sizeof(codeblock_t), MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 #    elif defined(__unix__) || defined(__APPLE__) || defined(__HAIKU__)
@@ -77,26 +79,25 @@ codegen_init(void)
     memset(codeblock, 0, BLOCK_SIZE * sizeof(codeblock_t));
     memset(codeblock_hash, 0, HASH_SIZE * sizeof(codeblock_t *));
 
-    for (c = 0; c < BLOCK_SIZE; c++)
+    for (int c = 0; c < BLOCK_SIZE; c++)
         codeblock[c].valid = 0;
 }
 
 void
 codegen_reset(void)
 {
-    int c;
-
     memset(codeblock, 0, BLOCK_SIZE * sizeof(codeblock_t));
     memset(codeblock_hash, 0, HASH_SIZE * sizeof(codeblock_t *));
     mem_reset_page_blocks();
 
-    for (c = 0; c < BLOCK_SIZE; c++)
+    for (int c = 0; c < BLOCK_SIZE; c++)
         codeblock[c].valid = 0;
 }
 
 void
 dump_block(void)
 {
+    //
 }
 
 static void
@@ -534,6 +535,7 @@ int opcode_0f_modrm[256] = {
 void
 codegen_debug(void)
 {
+    //
 }
 
 static x86seg *
@@ -845,7 +847,7 @@ codegen_generate_call(uint8_t opcode, OpFn op, uint32_t fetchdat, uint32_t new_p
         switch (opcode) {
             case 0x0f:
                 op_table        = x86_dynarec_opcodes_0f;
-                recomp_op_table = recomp_opcodes_0f;
+                recomp_op_table = fpu_softfloat ? recomp_opcodes_0f_no_mmx : recomp_opcodes_0f;
                 over            = 1;
                 break;
 
@@ -883,7 +885,7 @@ codegen_generate_call(uint8_t opcode, OpFn op, uint32_t fetchdat, uint32_t new_p
 
             case 0xd8:
                 op_table        = (op_32 & 0x200) ? x86_dynarec_opcodes_d8_a32 : x86_dynarec_opcodes_d8_a16;
-                recomp_op_table = recomp_opcodes_d8;
+                recomp_op_table = fpu_softfloat ? NULL : recomp_opcodes_d8;
                 opcode_shift    = 3;
                 opcode_mask     = 0x1f;
                 over            = 1;
@@ -893,7 +895,7 @@ codegen_generate_call(uint8_t opcode, OpFn op, uint32_t fetchdat, uint32_t new_p
                 break;
             case 0xd9:
                 op_table        = (op_32 & 0x200) ? x86_dynarec_opcodes_d9_a32 : x86_dynarec_opcodes_d9_a16;
-                recomp_op_table = recomp_opcodes_d9;
+                recomp_op_table = fpu_softfloat ? NULL : recomp_opcodes_d9;
                 opcode_mask     = 0xff;
                 over            = 1;
                 pc_off          = -1;
@@ -902,7 +904,7 @@ codegen_generate_call(uint8_t opcode, OpFn op, uint32_t fetchdat, uint32_t new_p
                 break;
             case 0xda:
                 op_table        = (op_32 & 0x200) ? x86_dynarec_opcodes_da_a32 : x86_dynarec_opcodes_da_a16;
-                recomp_op_table = recomp_opcodes_da;
+                recomp_op_table = fpu_softfloat ? NULL : recomp_opcodes_da;
                 opcode_mask     = 0xff;
                 over            = 1;
                 pc_off          = -1;
@@ -911,7 +913,7 @@ codegen_generate_call(uint8_t opcode, OpFn op, uint32_t fetchdat, uint32_t new_p
                 break;
             case 0xdb:
                 op_table        = (op_32 & 0x200) ? x86_dynarec_opcodes_db_a32 : x86_dynarec_opcodes_db_a16;
-                recomp_op_table = recomp_opcodes_db;
+                recomp_op_table = fpu_softfloat ? NULL : recomp_opcodes_db;
                 opcode_mask     = 0xff;
                 over            = 1;
                 pc_off          = -1;
@@ -920,7 +922,7 @@ codegen_generate_call(uint8_t opcode, OpFn op, uint32_t fetchdat, uint32_t new_p
                 break;
             case 0xdc:
                 op_table        = (op_32 & 0x200) ? x86_dynarec_opcodes_dc_a32 : x86_dynarec_opcodes_dc_a16;
-                recomp_op_table = recomp_opcodes_dc;
+                recomp_op_table = fpu_softfloat ? NULL : recomp_opcodes_dc;
                 opcode_shift    = 3;
                 opcode_mask     = 0x1f;
                 over            = 1;
@@ -930,7 +932,7 @@ codegen_generate_call(uint8_t opcode, OpFn op, uint32_t fetchdat, uint32_t new_p
                 break;
             case 0xdd:
                 op_table        = (op_32 & 0x200) ? x86_dynarec_opcodes_dd_a32 : x86_dynarec_opcodes_dd_a16;
-                recomp_op_table = recomp_opcodes_dd;
+                recomp_op_table = fpu_softfloat ? NULL : recomp_opcodes_dd;
                 opcode_mask     = 0xff;
                 over            = 1;
                 pc_off          = -1;
@@ -939,7 +941,7 @@ codegen_generate_call(uint8_t opcode, OpFn op, uint32_t fetchdat, uint32_t new_p
                 break;
             case 0xde:
                 op_table        = (op_32 & 0x200) ? x86_dynarec_opcodes_de_a32 : x86_dynarec_opcodes_de_a16;
-                recomp_op_table = recomp_opcodes_de;
+                recomp_op_table = fpu_softfloat ? NULL : recomp_opcodes_de;
                 opcode_mask     = 0xff;
                 over            = 1;
                 pc_off          = -1;
@@ -948,7 +950,7 @@ codegen_generate_call(uint8_t opcode, OpFn op, uint32_t fetchdat, uint32_t new_p
                 break;
             case 0xdf:
                 op_table        = (op_32 & 0x200) ? x86_dynarec_opcodes_df_a32 : x86_dynarec_opcodes_df_a16;
-                recomp_op_table = recomp_opcodes_df;
+                recomp_op_table = fpu_softfloat ? NULL : recomp_opcodes_df;
                 opcode_mask     = 0xff;
                 over            = 1;
                 pc_off          = -1;

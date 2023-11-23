@@ -15,6 +15,7 @@
  *
  *          Copyright 2016-2019 Miran Grca.
  *          Copyright 2017-2019 Fred N. van Kempen.
+ *          Copyright 2021-2023 Jasmine Iwanek.
  */
 #define UNICODE
 #define BITMAP WINDOWS_BITMAP
@@ -56,7 +57,8 @@
 #include <86box/win.h>
 
 HWND hwndSBAR;
-int  update_icons = 1, reset_occurred = 1;
+int  update_icons   = 1;
+int  reset_occurred = 1;
 
 static LONG_PTR OriginalProcedure;
 static WCHAR  **sbTips;
@@ -103,7 +105,7 @@ fdd_type_to_icon(int type)
             break;
     }
 
-    return (ret);
+    return ret;
 }
 
 /* FIXME: should be hdd_count() in hdd.c */
@@ -111,14 +113,13 @@ static int
 hdd_count(int bus)
 {
     int c = 0;
-    int i;
 
-    for (i = 0; i < HDD_NUM; i++) {
+    for (uint8_t i = 0; i < HDD_NUM; i++) {
         if (hdd[i].bus == bus)
             c++;
     }
 
-    return (c);
+    return c;
 }
 
 void
@@ -147,7 +148,7 @@ ui_sb_update_icon(int tag, int active)
     if (!update_icons || !sb_ready)
         return;
 
-    if (((tag & 0xf0) >= SB_TEXT))
+    if ((tag & 0xf0) >= SB_TEXT)
         return;
 
     found = sb_map[tag];
@@ -453,15 +454,13 @@ ui_sb_update_tip(int meaning)
 static void
 StatusBarDestroyTips(void)
 {
-    int i;
-
     if (sb_parts == 0)
         return;
 
     if (!sbTips)
         return;
 
-    for (i = 0; i < sb_parts; i++) {
+    for (int i = 0; i < sb_parts; i++) {
         if (sbTips[i]) {
             free(sbTips[i]);
             sbTips[i] = NULL;
@@ -494,13 +493,22 @@ ui_sb_set_ready(int ready)
 void
 ui_sb_update_panes(void)
 {
-    int   i, id;
-    int   cart_int, mfm_int, xta_int, esdi_int, ide_int, scsi_int;
-    int   edge = 0;
-    int   c_mfm, c_esdi, c_xta;
-    int   c_ide, c_scsi;
-    int   do_net;
-    char *hdc_name;
+    int         i;
+    int         id;
+    int         cart_int;
+    int         mfm_int;
+    int         xta_int;
+    int         esdi_int;
+    int         ide_int;
+    int         scsi_int;
+    int         edge = 0;
+    int         c_mfm;
+    int         c_esdi;
+    int         c_xta;
+    int         c_ide;
+    int         c_scsi;
+    int         do_net;
+    const char *hdc_name;
 
     if (!config_changed)
         return;
@@ -514,7 +522,7 @@ ui_sb_update_panes(void)
     xta_int  = machine_has_flags(machine, MACHINE_XTA) ? 1 : 0;
     esdi_int = machine_has_flags(machine, MACHINE_ESDI) ? 1 : 0;
     ide_int  = machine_has_flags(machine, MACHINE_IDE_QUAD) ? 1 : 0;
-    scsi_int = machine_has_flags(machine, MACHINE_SCSI_DUAL) ? 1 : 0;
+    scsi_int = machine_has_flags(machine, MACHINE_SCSI) ? 1 : 0;
 
     c_mfm  = hdd_count(HDD_BUS_MFM);
     c_esdi = hdd_count(HDD_BUS_ESDI);
@@ -825,7 +833,7 @@ StatusBarPopupMenu(HWND hwnd, POINT pt, int id)
 
     pt.x = id * icon_width; /* Justify to the left. */
     pt.y = 0;               /* Justify to the top. */
-    ClientToScreen(hwnd, (LPPOINT) &pt);
+    ClientToScreen(hwnd, &pt);
 
     switch (sb_part_meanings[id] & 0xF0) {
         case SB_CASSETTE:
@@ -857,7 +865,7 @@ StatusBarPopupMenu(HWND hwnd, POINT pt, int id)
 
 /* API: Load status bar icons */
 void
-StatusBarLoadIcon(HINSTANCE hInst)
+StatusBarLoadIcon(UNUSED(HINSTANCE hInst))
 {
     win_load_icon_set();
 }
@@ -879,23 +887,23 @@ StatusBarProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
     switch (message) {
         case WM_COMMAND:
             media_menu_proc(hwnd, message, wParam, lParam);
-            return (0);
+            return 0;
 
         case WM_LBUTTONDOWN:
         case WM_RBUTTONDOWN:
-            GetClientRect(hwnd, (LPRECT) &rc);
+            GetClientRect(hwnd, &rc);
             pt.x = GET_X_LPARAM(lParam);
             pt.y = GET_Y_LPARAM(lParam);
-            if (PtInRect((LPRECT) &rc, pt))
+            if (PtInRect(&rc, pt))
                 StatusBarPopupMenu(hwnd, pt, (pt.x / icon_width));
             break;
 
         case WM_LBUTTONDBLCLK:
-            GetClientRect(hwnd, (LPRECT) &rc);
+            GetClientRect(hwnd, &rc);
             pt.x    = GET_X_LPARAM(lParam);
             pt.y    = GET_Y_LPARAM(lParam);
             item_id = (pt.x / icon_width);
-            if (PtInRect((LPRECT) &rc, pt) && (item_id < sb_parts)) {
+            if (PtInRect(&rc, pt) && (item_id < sb_parts)) {
                 if (sb_part_meanings[item_id] == SB_SOUND)
                     SoundGainDialogCreate(hwndMain);
             }
@@ -924,7 +932,7 @@ StatusBarProcedure(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
                                    hwnd, message, wParam, lParam));
     }
 
-    return (0);
+    return 0;
 }
 
 /* API: Create and set up the Status Bar window. */
@@ -932,7 +940,8 @@ void
 StatusBarCreate(HWND hwndParent, uintptr_t idStatus, HINSTANCE hInst)
 {
     RECT rectDialog;
-    int  dw, dh;
+    int  dw;
+    int  dh;
 
     /* Get current DPI and calculate icon sizes */
     dpi        = win_get_dpi(hwndParent);
@@ -1043,6 +1052,7 @@ ui_sb_bugui(char *str)
 
 /* API */
 void
-ui_sb_mt32lcd(char *str)
+ui_sb_mt32lcd(UNUSED(char *str))
 {
+    //
 }

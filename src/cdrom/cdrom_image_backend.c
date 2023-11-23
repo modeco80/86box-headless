@@ -68,24 +68,24 @@ cdrom_image_backend_log(const char *fmt, ...)
 
 /* Binary file functions. */
 static int
-bin_read(void *p, uint8_t *buffer, uint64_t seek, size_t count)
+bin_read(void *priv, uint8_t *buffer, uint64_t seek, size_t count)
 {
-    track_file_t *tf = (track_file_t *) p;
+    track_file_t *tf = (track_file_t *) priv;
 
     cdrom_image_backend_log("CDROM: binary_read(%08lx, pos=%" PRIu64 " count=%lu\n",
-                            tf->file, seek, count);
+                            tf->fp, seek, count);
 
-    if (tf->file == NULL)
+    if (tf->fp == NULL)
         return 0;
 
-    if (fseeko64(tf->file, seek, SEEK_SET) == -1) {
+    if (fseeko64(tf->fp, seek, SEEK_SET) == -1) {
 #ifdef ENABLE_CDROM_IMAGE_BACKEND_LOG
         cdrom_image_backend_log("CDROM: binary_read failed during seek!\n");
 #endif
         return 0;
     }
 
-    if (fread(buffer, count, 1, tf->file) != 1) {
+    if (fread(buffer, count, 1, tf->fp) != 1) {
 #ifdef ENABLE_CDROM_IMAGE_BACKEND_LOG
         cdrom_image_backend_log("CDROM: binary_read failed during read!\n");
 #endif
@@ -96,39 +96,39 @@ bin_read(void *p, uint8_t *buffer, uint64_t seek, size_t count)
 }
 
 static uint64_t
-bin_get_length(void *p)
+bin_get_length(void *priv)
 {
     off64_t       len;
-    track_file_t *tf = (track_file_t *) p;
+    track_file_t *tf = (track_file_t *) priv;
 
-    cdrom_image_backend_log("CDROM: binary_length(%08lx)\n", tf->file);
+    cdrom_image_backend_log("CDROM: binary_length(%08lx)\n", tf->fp);
 
-    if (tf->file == NULL)
+    if (tf->fp == NULL)
         return 0;
 
-    fseeko64(tf->file, 0, SEEK_END);
-    len = ftello64(tf->file);
-    cdrom_image_backend_log("CDROM: binary_length(%08lx) = %" PRIu64 "\n", tf->file, len);
+    fseeko64(tf->fp, 0, SEEK_END);
+    len = ftello64(tf->fp);
+    cdrom_image_backend_log("CDROM: binary_length(%08lx) = %" PRIu64 "\n", tf->fp, len);
 
     return len;
 }
 
 static void
-bin_close(void *p)
+bin_close(void *priv)
 {
-    track_file_t *tf = (track_file_t *) p;
+    track_file_t *tf = (track_file_t *) priv;
 
     if (tf == NULL)
         return;
 
-    if (tf->file != NULL) {
-        fclose(tf->file);
-        tf->file = NULL;
+    if (tf->fp != NULL) {
+        fclose(tf->fp);
+        tf->fp = NULL;
     }
 
     memset(tf->fn, 0x00, sizeof(tf->fn));
 
-    free(p);
+    free(priv);
 }
 
 static track_file_t *
@@ -144,14 +144,14 @@ bin_init(const char *filename, int *error)
 
     memset(tf->fn, 0x00, sizeof(tf->fn));
     strncpy(tf->fn, filename, sizeof(tf->fn) - 1);
-    tf->file = plat_fopen64(tf->fn, "rb");
-    cdrom_image_backend_log("CDROM: binary_open(%s) = %08lx\n", tf->fn, tf->file);
+    tf->fp = plat_fopen64(tf->fn, "rb");
+    cdrom_image_backend_log("CDROM: binary_open(%s) = %08lx\n", tf->fn, tf->fp);
 
     if (stat(tf->fn, &stats) != 0) {
         /* Use a blank structure if stat failed. */
         memset(&stats, 0, sizeof(struct stat));
     }
-    *error = ((tf->file == NULL) || ((stats.st_mode & S_IFMT) == S_IFDIR));
+    *error = ((tf->fp == NULL) || ((stats.st_mode & S_IFMT) == S_IFDIR));
 
     /* Set the function pointers. */
     if (!*error) {
@@ -159,7 +159,15 @@ bin_init(const char *filename, int *error)
         tf->get_length = bin_get_length;
         tf->close      = bin_close;
     } else {
-        free(tf);
+        /* From the check above, error may still be non-zero if opening a directory.
+         * The error is set for viso to try and open the directory following this function.
+         * However, we need to make sure the descriptor is closed. */
+        if ((tf->fp != NULL) && ((stats.st_mode & S_IFMT) == S_IFDIR)) {
+            /* tf is freed by bin_close */
+            bin_close(tf);
+        } else {
+            free(tf);
+        }
         tf = NULL;
     }
 
@@ -194,14 +202,13 @@ track_file_close(track_t *trk)
 static void
 cdi_clear_tracks(cd_img_t *cdi)
 {
-    int           i;
-    track_file_t *last = NULL;
-    track_t      *cur  = NULL;
+    const track_file_t *last = NULL;
+    track_t            *cur  = NULL;
 
     if ((cdi->tracks == NULL) || (cdi->tracks_num == 0))
         return;
 
-    for (i = 0; i < cdi->tracks_num; i++) {
+    for (int i = 0; i < cdi->tracks_num; i++) {
         cur = &cdi->tracks[i];
 
         /* Make sure we do not attempt to close a NULL file. */
@@ -266,7 +273,7 @@ cdi_get_audio_tracks_lba(cd_img_t *cdi, int *st_track, int *end, uint32_t *lead_
 int
 cdi_get_audio_track_pre(cd_img_t *cdi, int track)
 {
-    track_t *trk = &cdi->tracks[track - 1];
+    const track_t *trk = &cdi->tracks[track - 1];
 
     if ((track < 1) || (track > cdi->tracks_num))
         return 0;
@@ -276,9 +283,9 @@ cdi_get_audio_track_pre(cd_img_t *cdi, int track)
 
 /* This replaces both Info and EndInfo, they are specified by a variable. */
 int
-cdi_get_audio_track_info(cd_img_t *cdi, int end, int track, int *track_num, TMSF *start, uint8_t *attr)
+cdi_get_audio_track_info(cd_img_t *cdi, UNUSED(int end), int track, int *track_num, TMSF *start, uint8_t *attr)
 {
-    track_t *trk = &cdi->tracks[track - 1];
+    const track_t *trk = &cdi->tracks[track - 1];
     int      pos = trk->start + 150;
 
     if ((track < 1) || (track > cdi->tracks_num))
@@ -295,9 +302,9 @@ cdi_get_audio_track_info(cd_img_t *cdi, int end, int track, int *track_num, TMSF
 }
 
 int
-cdi_get_audio_track_info_lba(cd_img_t *cdi, int end, int track, int *track_num, uint32_t *start, uint8_t *attr)
+cdi_get_audio_track_info_lba(cd_img_t *cdi, UNUSED(int end), int track, int *track_num, uint32_t *start, uint8_t *attr)
 {
-    track_t *trk = &cdi->tracks[track - 1];
+    const track_t *trk = &cdi->tracks[track - 1];
 
     if ((track < 1) || (track > cdi->tracks_num))
         return 0;
@@ -313,8 +320,8 @@ cdi_get_audio_track_info_lba(cd_img_t *cdi, int end, int track, int *track_num, 
 int
 cdi_get_track(cd_img_t *cdi, uint32_t sector)
 {
-    int      i;
-    track_t *cur, *next;
+    const track_t *cur;
+    const track_t *next;
 
     /* There must be at least two tracks - data and lead out. */
     if (cdi->tracks_num < 2)
@@ -322,9 +329,14 @@ cdi_get_track(cd_img_t *cdi, uint32_t sector)
 
     /* This has a problem - the code skips the last track, which is
        lead out - is that correct? */
-    for (i = 0; i < (cdi->tracks_num - 1); i++) {
+    for (int i = 0; i < (cdi->tracks_num - 1); i++) {
         cur  = &cdi->tracks[i];
         next = &cdi->tracks[i + 1];
+
+        /* Take into account cue sheets that do not start on sector 0. */
+        if ((i == 0) && (sector < cur->start))
+            return cur->number;
+
         if ((cur->start <= sector) && (sector < next->start))
             return cur->number;
     }
@@ -336,8 +348,8 @@ cdi_get_track(cd_img_t *cdi, uint32_t sector)
 int
 cdi_get_audio_sub(cd_img_t *cdi, uint32_t sector, uint8_t *attr, uint8_t *track, uint8_t *index, TMSF *rel_pos, TMSF *abs_pos)
 {
-    int      cur_track = cdi_get_track(cdi, sector);
-    track_t *trk;
+    int            cur_track = cdi_get_track(cdi, sector);
+    const track_t *trk;
 
     if (cur_track < 1)
         return 0;
@@ -360,12 +372,17 @@ cdi_read_sector(cd_img_t *cdi, uint8_t *buffer, int raw, uint32_t sector)
 {
     size_t   length;
     int      track = cdi_get_track(cdi, sector) - 1;
-    uint64_t sect  = (uint64_t) sector, seek;
+    uint64_t sect  = (uint64_t) sector;
+    uint64_t seek;
     track_t *trk;
-    int      track_is_raw, ret;
-    int      raw_size, cooked_size;
+    int      track_is_raw;
+    int      ret;
+    int      raw_size;
+    int      cooked_size;
     uint64_t offset = 0ULL;
-    int      m = 0, s = 0, f = 0;
+    int      m = 0;
+    int      s = 0;
+    int      f = 0;
 
     if (track < 0)
         return 0;
@@ -413,16 +430,18 @@ cdi_read_sector(cd_img_t *cdi, uint8_t *buffer, int raw, uint32_t sector)
         return 1;
     } else if (!raw && track_is_raw)
         return trk->file->read(trk->file, buffer, seek + offset, length);
-    else
+    else {
         return trk->file->read(trk->file, buffer, seek, length);
+    }
 }
 
 int
 cdi_read_sectors(cd_img_t *cdi, uint8_t *buffer, int raw, uint32_t sector, uint32_t num)
 {
-    int      sector_size, success = 1;
+    int      sector_size;
+    int      success = 1;
     uint8_t *buf;
-    uint32_t buf_len, i;
+    uint32_t buf_len;
 
     /* TODO: This fails to account for Mode 2. Shouldn't we have a function
              to get sector size? */
@@ -430,7 +449,7 @@ cdi_read_sectors(cd_img_t *cdi, uint8_t *buffer, int raw, uint32_t sector, uint3
     buf_len     = num * sector_size;
     buf         = (uint8_t *) malloc(buf_len * sizeof(uint8_t));
 
-    for (i = 0; i < num; i++) {
+    for (uint32_t i = 0; i < num; i++) {
         success = cdi_read_sector(cdi, &buf[i * sector_size], raw, sector + i);
         if (!success)
             break;
@@ -453,7 +472,8 @@ cdi_read_sector_sub(cd_img_t *cdi, uint8_t *buffer, uint32_t sector)
 {
     int      track = cdi_get_track(cdi, sector) - 1;
     track_t *trk;
-    uint64_t s = (uint64_t) sector, seek;
+    uint64_t s = (uint64_t) sector;
+    uint64_t seek;
 
     if (track < 0)
         return 0;
@@ -469,8 +489,8 @@ cdi_read_sector_sub(cd_img_t *cdi, uint8_t *buffer, uint32_t sector)
 int
 cdi_get_sector_size(cd_img_t *cdi, uint32_t sector)
 {
-    int      track = cdi_get_track(cdi, sector) - 1;
-    track_t *trk;
+    int            track = cdi_get_track(cdi, sector) - 1;
+    const track_t *trk;
 
     if (track < 0)
         return 0;
@@ -482,8 +502,8 @@ cdi_get_sector_size(cd_img_t *cdi, uint32_t sector)
 int
 cdi_is_mode2(cd_img_t *cdi, uint32_t sector)
 {
-    int      track = cdi_get_track(cdi, sector) - 1;
-    track_t *trk;
+    int            track = cdi_get_track(cdi, sector) - 1;
+    const track_t *trk;
 
     if (track < 0)
         return 0;
@@ -496,8 +516,8 @@ cdi_is_mode2(cd_img_t *cdi, uint32_t sector)
 int
 cdi_get_mode2_form(cd_img_t *cdi, uint32_t sector)
 {
-    int      track = cdi_get_track(cdi, sector) - 1;
-    track_t *trk;
+    int            track = cdi_get_track(cdi, sector) - 1;
+    const track_t *trk;
 
     if (track < 0)
         return 0;
@@ -542,7 +562,8 @@ cdi_track_push_back(cd_img_t *cdi, track_t *trk)
 int
 cdi_load_iso(cd_img_t *cdi, const char *filename)
 {
-    int     error, ret = 2;
+    int     error;
+    int     ret = 2;
     track_t trk;
 
     cdi->tracks     = NULL;
@@ -637,7 +658,7 @@ cdi_cue_get_buffer(char *str, char **line, int up)
                     done = 1;
                     break;
                 }
-                /*FALLTHROUGH*/
+                fallthrough;
 
             default:
                 if (up && islower((int) *s))
@@ -690,7 +711,9 @@ static int
 cdi_cue_get_frame(uint64_t *frames, char **line)
 {
     char temp[128];
-    int  min, sec, fr;
+    int  min;
+    int  sec;
+    int  fr;
     int  success;
 
     success = cdi_cue_get_buffer(temp, line, 0);
@@ -709,7 +732,8 @@ cdi_cue_get_frame(uint64_t *frames, char **line)
 static int
 cdi_cue_get_flags(track_t *cur, char **line)
 {
-    char temp[128], temp2[128];
+    char temp[128];
+    char temp2[128];
     int  success;
 
     success = cdi_cue_get_buffer(temp, line, 0);
@@ -730,7 +754,8 @@ static int
 cdi_add_track(cd_img_t *cdi, track_t *cur, uint64_t *shift, uint64_t prestart, uint64_t *total_pregap, uint64_t cur_pregap)
 {
     /* Frames between index 0 (prestart) and 1 (current track start) must be skipped. */
-    uint64_t skip, temp;
+    uint64_t skip;
+    uint64_t temp;
     track_t *prev = NULL;
 
     /* Skip *MUST* be calculated even if prestart is 0. */
@@ -749,7 +774,7 @@ cdi_add_track(cd_img_t *cdi, track_t *cur, uint64_t *shift, uint64_t prestart, u
     }
 
     /* First track (track number must be 1). */
-    if (cdi->tracks_num == 0) {
+    if ((prev == NULL) || (cdi->tracks_num == 0)) {
         /* I guess this makes sure the structure is not filled with invalid data. */
         if (cur->number != 1)
             return 0;
@@ -768,7 +793,7 @@ cdi_add_track(cd_img_t *cdi, track_t *cur, uint64_t *shift, uint64_t prestart, u
         *total_pregap += cur_pregap;
         cur->start += *total_pregap;
     } else {
-        temp         = prev->file->get_length(prev->file) - ((uint64_t) prev->skip);
+        temp         = prev->file->get_length(prev->file) - (prev->skip);
         prev->length = temp / ((uint64_t) prev->sector_size);
         if ((temp % prev->sector_size) != 0)
             prev->length++;
@@ -797,16 +822,23 @@ int
 cdi_load_cue(cd_img_t *cdi, const char *cuefile)
 {
     track_t  trk;
-    char     pathname[MAX_FILENAME_LENGTH], filename[MAX_FILENAME_LENGTH];
+    char     pathname[MAX_FILENAME_LENGTH];
+    char     filename[MAX_FILENAME_LENGTH];
     char     temp[MAX_FILENAME_LENGTH];
-    uint64_t shift = 0ULL, prestart = 0ULL;
-    uint64_t cur_pregap = 0ULL, total_pregap = 0ULL;
-    uint64_t frame = 0ULL, index;
-    int      i, success;
-    int      error, can_add_track = 0;
+    uint64_t shift = 0ULL;
+    uint64_t prestart = 0ULL;
+    uint64_t cur_pregap = 0ULL;
+    uint64_t total_pregap = 0ULL;
+    uint64_t frame = 0ULL;
+    uint64_t index;
+    int      success;
+    int      error;
+    int      can_add_track = 0;
     FILE    *fp;
-    char     buf[MAX_LINE_LENGTH], ansi[MAX_FILENAME_LENGTH];
-    char    *line, *command;
+    char     buf[MAX_LINE_LENGTH];
+    char     ansi[MAX_FILENAME_LENGTH];
+    char    *line;
+    char    *command;
     char    *type;
 
     cdi->tracks     = NULL;
@@ -834,7 +866,7 @@ cdi_load_cue(cd_img_t *cdi, const char *cuefile)
 
         /* Do two iterations to make sure to nuke even if it's \r\n or \n\r,
            but do checks to make sure we're not nuking other bytes. */
-        for (i = 0; i < 2; i++) {
+        for (uint8_t i = 0; i < 2; i++) {
             if (strlen(buf) > 0) {
                 if (buf[strlen(buf) - 1] == '\n')
                     buf[strlen(buf) - 1] = '\0';
@@ -1027,13 +1059,11 @@ cdi_load_cue(cd_img_t *cdi, const char *cuefile)
 int
 cdi_has_data_track(cd_img_t *cdi)
 {
-    int i;
-
     if ((cdi == NULL) || (cdi->tracks == NULL))
         return 0;
 
     /* Data track has attribute 0x14. */
-    for (i = 0; i < cdi->tracks_num; i++) {
+    for (int i = 0; i < cdi->tracks_num; i++) {
         if (cdi->tracks[i].attr == DATA_TRACK)
             return 1;
     }
@@ -1044,13 +1074,11 @@ cdi_has_data_track(cd_img_t *cdi)
 int
 cdi_has_audio_track(cd_img_t *cdi)
 {
-    int i;
-
     if ((cdi == NULL) || (cdi->tracks == NULL))
         return 0;
 
     /* Audio track has attribute 0x14. */
-    for (i = 0; i < cdi->tracks_num; i++) {
+    for (int i = 0; i < cdi->tracks_num; i++) {
         if (cdi->tracks[i].attr == AUDIO_TRACK)
             return 1;
     }

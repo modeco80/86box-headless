@@ -74,9 +74,9 @@ static uint8_t crtc_mask[0x40] = {
 
 static void tvga_recalcbanking(tvga_t *tvga);
 void
-tvga_out(uint16_t addr, uint8_t val, void *p)
+tvga_out(uint16_t addr, uint8_t val, void *priv)
 {
-    tvga_t *tvga = (tvga_t *) p;
+    tvga_t *tvga = (tvga_t *) priv;
     svga_t *svga = &tvga->svga;
 
     uint8_t old;
@@ -111,6 +111,9 @@ tvga_out(uint16_t addr, uint8_t val, void *p)
                         tvga_recalcbanking(tvga);
                     }
                     return;
+
+                default:
+                    break;
             }
             break;
 
@@ -143,6 +146,9 @@ tvga_out(uint16_t addr, uint8_t val, void *p)
                     svga->gdcreg[0xf] = val;
                     tvga_recalcbanking(tvga);
                     break;
+
+                default:
+                    break;
             }
             break;
         case 0x3D4:
@@ -171,6 +177,9 @@ tvga_out(uint16_t addr, uint8_t val, void *p)
                 case 0x1e:
                     svga->vram_display_mask = (val & 0x80) ? tvga->vram_mask : 0x3ffff;
                     break;
+
+                default:
+                    break;
             }
             return;
         case 0x3D8:
@@ -194,14 +203,17 @@ tvga_out(uint16_t addr, uint8_t val, void *p)
                 svga_recalctimings(svga);
             }
             break;
+
+        default:
+            break;
     }
     svga_out(addr, val, svga);
 }
 
 uint8_t
-tvga_in(uint16_t addr, void *p)
+tvga_in(uint16_t addr, void *priv)
 {
-    tvga_t *tvga = (tvga_t *) p;
+    tvga_t *tvga = (tvga_t *) priv;
     svga_t *svga = &tvga->svga;
 
     if (((addr & 0xFFF0) == 0x3D0 || (addr & 0xFFF0) == 0x3B0) && !(svga->miscout & 1))
@@ -241,6 +253,9 @@ tvga_in(uint16_t addr, void *p)
             return tvga->tvga_3d8;
         case 0x3d9:
             return tvga->tvga_3d9;
+
+        default:
+            break;
     }
     return svga_in(addr, svga);
 }
@@ -261,9 +276,9 @@ tvga_recalcbanking(tvga_t *tvga)
 void
 tvga_recalctimings(svga_t *svga)
 {
-    tvga_t *tvga = (tvga_t *) svga->p;
-    int     clksel;
-    int     high_res_256 = 0;
+    const tvga_t *tvga = (tvga_t *) svga->priv;
+    int           clksel;
+    int           high_res_256 = 0;
 
     if (!svga->rowoffset)
         svga->rowoffset = 0x100; /*This is the only sensible way I can see this being handled,
@@ -305,46 +320,49 @@ tvga_recalctimings(svga_t *svga)
 
     switch (clksel) {
         case 0x2:
-            svga->clock = (cpuclock * (double) (1ull << 32)) / 44900000.0;
+            svga->clock = (cpuclock * (double) (1ULL << 32)) / 44900000.0;
             break;
         case 0x3:
-            svga->clock = (cpuclock * (double) (1ull << 32)) / 36000000.0;
+            svga->clock = (cpuclock * (double) (1ULL << 32)) / 36000000.0;
             break;
         case 0x4:
-            svga->clock = (cpuclock * (double) (1ull << 32)) / 57272000.0;
+            svga->clock = (cpuclock * (double) (1ULL << 32)) / 57272000.0;
             break;
         case 0x5:
-            svga->clock = (cpuclock * (double) (1ull << 32)) / 65000000.0;
+            svga->clock = (cpuclock * (double) (1ULL << 32)) / 65000000.0;
             break;
         case 0x6:
-            svga->clock = (cpuclock * (double) (1ull << 32)) / 50350000.0;
+            svga->clock = (cpuclock * (double) (1ULL << 32)) / 50350000.0;
             break;
         case 0x7:
-            svga->clock = (cpuclock * (double) (1ull << 32)) / 40000000.0;
+            svga->clock = (cpuclock * (double) (1ULL << 32)) / 40000000.0;
             break;
         case 0x8:
-            svga->clock = (cpuclock * (double) (1ull << 32)) / 88000000.0;
+            svga->clock = (cpuclock * (double) (1ULL << 32)) / 88000000.0;
             break;
         case 0x9:
-            svga->clock = (cpuclock * (double) (1ull << 32)) / 98000000.0;
+            svga->clock = (cpuclock * (double) (1ULL << 32)) / 98000000.0;
             break;
         case 0xa:
-            svga->clock = (cpuclock * (double) (1ull << 32)) / 118800000.0;
+            svga->clock = (cpuclock * (double) (1ULL << 32)) / 118800000.0;
             break;
         case 0xb:
-            svga->clock = (cpuclock * (double) (1ull << 32)) / 108000000.0;
+            svga->clock = (cpuclock * (double) (1ULL << 32)) / 108000000.0;
             break;
         case 0xc:
-            svga->clock = (cpuclock * (double) (1ull << 32)) / 72000000.0;
+            svga->clock = (cpuclock * (double) (1ULL << 32)) / 72000000.0;
             break;
         case 0xd:
-            svga->clock = (cpuclock * (double) (1ull << 32)) / 77000000.0;
+            svga->clock = (cpuclock * (double) (1ULL << 32)) / 77000000.0;
             break;
         case 0xe:
-            svga->clock = (cpuclock * (double) (1ull << 32)) / 80000000.0;
+            svga->clock = (cpuclock * (double) (1ULL << 32)) / 80000000.0;
             break;
         case 0xf:
-            svga->clock = (cpuclock * (double) (1ull << 32)) / 75000000.0;
+            svga->clock = (cpuclock * (double) (1ULL << 32)) / 75000000.0;
+            break;
+
+        default:
             break;
     }
 
@@ -377,6 +395,9 @@ tvga_recalctimings(svga_t *svga)
             case 24:
                 svga->render = svga_render_24bpp_highres;
                 svga->hdisp /= 3;
+                break;
+
+            default:
                 break;
         }
         svga->lowres = 0;
@@ -417,7 +438,7 @@ tvga_init(const device_t *info)
             return NULL;
     }
 
-    rom_init(&tvga->bios_rom, (char *) bios_fn, 0xc0000, 0x8000, 0x7fff, 0, MEM_MAPPING_EXTERNAL);
+    rom_init(&tvga->bios_rom, bios_fn, 0xc0000, 0x8000, 0x7fff, 0, MEM_MAPPING_EXTERNAL);
 
     svga_init(info, &tvga->svga, tvga, tvga->vram_size,
               tvga_recalctimings,
@@ -458,9 +479,9 @@ tvga9000b_nec_sv9000_available(void)
 }
 
 void
-tvga_close(void *p)
+tvga_close(void *priv)
 {
-    tvga_t *tvga = (tvga_t *) p;
+    tvga_t *tvga = (tvga_t *) priv;
 
     svga_close(&tvga->svga);
 
@@ -468,17 +489,17 @@ tvga_close(void *p)
 }
 
 void
-tvga_speed_changed(void *p)
+tvga_speed_changed(void *priv)
 {
-    tvga_t *tvga = (tvga_t *) p;
+    tvga_t *tvga = (tvga_t *) priv;
 
     svga_recalctimings(&tvga->svga);
 }
 
 void
-tvga_force_redraw(void *p)
+tvga_force_redraw(void *priv)
 {
-    tvga_t *tvga = (tvga_t *) p;
+    tvga_t *tvga = (tvga_t *) priv;
 
     tvga->svga.fullchange = changeframecount;
 }

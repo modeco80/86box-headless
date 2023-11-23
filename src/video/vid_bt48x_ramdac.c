@@ -29,13 +29,13 @@
 #include <86box/video.h>
 #include <86box/vid_svga.h>
 
-typedef struct
-{
+typedef struct bt48x_ramdac_t {
     PALETTE  extpal;
     uint32_t extpallook[256];
     uint8_t  cursor32_data[256];
     uint8_t  cursor64_data[1024];
-    int      hwc_y, hwc_x;
+    int      hwc_y;
+    int      hwc_x;
     uint8_t  cmd_r0;
     uint8_t  cmd_r1;
     uint8_t  cmd_r2;
@@ -77,14 +77,17 @@ bt48x_set_bpp(bt48x_ramdac_t *ramdac, svga_t *svga)
             case 0x60:
                 svga->bpp = 4;
                 break;
+
+            default:
+                break;
         }
     svga_recalctimings(svga);
 }
 
 void
-bt48x_ramdac_out(uint16_t addr, int rs2, int rs3, uint8_t val, void *p, svga_t *svga)
+bt48x_ramdac_out(uint16_t addr, int rs2, int rs3, uint8_t val, void *priv, svga_t *svga)
 {
-    bt48x_ramdac_t *ramdac = (bt48x_ramdac_t *) p;
+    bt48x_ramdac_t *ramdac = (bt48x_ramdac_t *) priv;
     uint32_t        o32;
     uint8_t        *cd;
     uint16_t        index;
@@ -104,7 +107,7 @@ bt48x_ramdac_out(uint16_t addr, int rs2, int rs3, uint8_t val, void *p, svga_t *
             svga->dac_status = addr & 0x03;
             svga->dac_addr   = val;
             if (ramdac->type >= BT485)
-                svga->dac_addr |= ((int) (ramdac->cmd_r3 & 0x03) << 8);
+                svga->dac_addr |= ((ramdac->cmd_r3 & 0x03) << 8);
             if (svga->dac_status)
                 svga->dac_addr = (svga->dac_addr + 1) & da_mask;
             break;
@@ -143,6 +146,9 @@ bt48x_ramdac_out(uint16_t addr, int rs2, int rs3, uint8_t val, void *p, svga_t *
                     svga->dac_addr = (svga->dac_addr + 1) & 0xff;
                     svga->dac_pos  = 0;
                     break;
+
+                default:
+                    break;
             }
             break;
         case 0x06: /* Command Register 0 (RS value = 0110) */
@@ -160,7 +166,7 @@ bt48x_ramdac_out(uint16_t addr, int rs2, int rs3, uint8_t val, void *p, svga_t *
             break;
         case 0x0a:
             if ((ramdac->type >= BT485) && (ramdac->cmd_r0 & 0x80)) {
-                switch ((svga->dac_addr & ((ramdac->type >= BT485A) ? 0xff : 0x3f))) {
+                switch (svga->dac_addr & ((ramdac->type >= BT485A) ? 0xff : 0x3f)) {
                     case 0x01:
                         /* Command Register 3 (RS value = 1010) */
                         ramdac->cmd_r3 = val;
@@ -182,6 +188,9 @@ bt48x_ramdac_out(uint16_t addr, int rs2, int rs3, uint8_t val, void *p, svga_t *
                             ramdac->cmd_r4 = val;
                             break;
                         }
+                        break;
+
+                    default:
                         break;
                 }
             }
@@ -215,17 +224,20 @@ bt48x_ramdac_out(uint16_t addr, int rs2, int rs3, uint8_t val, void *p, svga_t *
             ramdac->hwc_y        = (ramdac->hwc_y & 0x00ff) | ((val & 0x0f) << 8);
             svga->dac_hwcursor.y = ramdac->hwc_y - svga->dac_hwcursor.cur_ysize;
             break;
+
+        default:
+            break;
     }
 
     return;
 }
 
 uint8_t
-bt48x_ramdac_in(uint16_t addr, int rs2, int rs3, void *p, svga_t *svga)
+bt48x_ramdac_in(uint16_t addr, int rs2, int rs3, void *priv, svga_t *svga)
 {
-    bt48x_ramdac_t *ramdac = (bt48x_ramdac_t *) p;
+    bt48x_ramdac_t *ramdac = (bt48x_ramdac_t *) priv;
     uint8_t         temp   = 0xff;
-    uint8_t        *cd;
+    const uint8_t  *cd;
     uint16_t        index;
     uint8_t         rs      = (addr & 0x03);
     uint16_t        da_mask = 0x03ff;
@@ -271,6 +283,9 @@ bt48x_ramdac_in(uint16_t addr, int rs2, int rs3, void *p, svga_t *svga)
                     else
                         temp = ramdac->extpal[index].b & 0x3f;
                     break;
+
+                default:
+                    break;
             }
             break;
         case 0x06: /* Command Register 0 (RS value = 0110) */
@@ -284,9 +299,9 @@ bt48x_ramdac_in(uint16_t addr, int rs2, int rs3, void *p, svga_t *svga)
             break;
         case 0x0a:
             if ((ramdac->type >= BT485) && (ramdac->cmd_r0 & 0x80)) {
-                switch ((svga->dac_addr & ((ramdac->type >= BT485A) ? 0xff : 0x3f))) {
-                    case 0x00:
+                switch (svga->dac_addr & ((ramdac->type >= BT485A) ? 0xff : 0x3f)) {
                     default:
+                    case 0x00:
                         temp = ramdac->status | (svga->dac_status ? 0x04 : 0x00);
                         break;
                     case 0x01:
@@ -307,7 +322,6 @@ bt48x_ramdac_in(uint16_t addr, int rs2, int rs3, void *p, svga_t *svga)
                             temp = 0xff;
                             break;
                         }
-                        break;
                 }
             } else
                 temp = ramdac->status | (svga->dac_status ? 0x04 : 0x00);
@@ -337,15 +351,18 @@ bt48x_ramdac_in(uint16_t addr, int rs2, int rs3, void *p, svga_t *svga)
         case 0x0f: /* Cursor Y High Register (RS value = 1111) */
             temp = (ramdac->hwc_y >> 8) & 0xff;
             break;
+
+        default:
+            break;
     }
 
     return temp;
 }
 
 void
-bt48x_recalctimings(void *p, svga_t *svga)
+bt48x_recalctimings(void *priv, svga_t *svga)
 {
-    bt48x_ramdac_t *ramdac = (bt48x_ramdac_t *) p;
+    const bt48x_ramdac_t *ramdac = (bt48x_ramdac_t *) priv;
 
     svga->interlace = ramdac->cmd_r2 & 0x08;
     if (ramdac->cmd_r3 & 0x08)
@@ -355,12 +372,21 @@ bt48x_recalctimings(void *p, svga_t *svga)
 void
 bt48x_hwcursor_draw(svga_t *svga, int displine)
 {
-    int             x, xx, comb, b0, b1;
+    int             comb;
+    int             b0;
+    int             b1;
     uint16_t        dat[2];
     int             offset = svga->dac_hwcursor_latch.x - svga->dac_hwcursor_latch.xoff;
-    int             pitch, bppl, mode, x_pos, y_pos;
-    uint32_t        clr1, clr2, clr3, *p;
-    uint8_t        *cd;
+    int             pitch;
+    int             bppl;
+    int             mode;
+    int             x_pos;
+    int             y_pos;
+    uint32_t        clr1;
+    uint32_t        clr2;
+    uint32_t        clr3;
+    uint32_t       *p;
+    const uint8_t  *cd;
     bt48x_ramdac_t *ramdac = (bt48x_ramdac_t *) svga->ramdac;
 
     clr1 = ramdac->extpallook[1];
@@ -384,11 +410,11 @@ bt48x_hwcursor_draw(svga_t *svga, int displine)
     else
         cd = (uint8_t *) ramdac->cursor32_data;
 
-    for (x = 0; x < svga->dac_hwcursor_latch.cur_xsize; x += 16) {
+    for (int x = 0; x < svga->dac_hwcursor_latch.cur_xsize; x += 16) {
         dat[0] = (cd[svga->dac_hwcursor_latch.addr] << 8) | cd[svga->dac_hwcursor_latch.addr + 1];
         dat[1] = (cd[svga->dac_hwcursor_latch.addr + bppl] << 8) | cd[svga->dac_hwcursor_latch.addr + bppl + 1];
 
-        for (xx = 0; xx < 16; xx++) {
+        for (uint8_t xx = 0; xx < 16; xx++) {
             b0   = (dat[0] >> (15 - xx)) & 1;
             b1   = (dat[1] >> (15 - xx)) & 1;
             comb = (b0 | (b1 << 1));
@@ -410,6 +436,9 @@ bt48x_hwcursor_draw(svga_t *svga, int displine)
                             case 3:
                                 p[x_pos] = clr3;
                                 break;
+
+                            default:
+                                break;
                         }
                         break;
                     case 2: /* PM/Windows */
@@ -423,6 +452,9 @@ bt48x_hwcursor_draw(svga_t *svga, int displine)
                             case 3:
                                 p[x_pos] ^= 0xffffff;
                                 break;
+
+                            default:
+                                break;
                         }
                         break;
                     case 3: /* X-Windows */
@@ -433,7 +465,13 @@ bt48x_hwcursor_draw(svga_t *svga, int displine)
                             case 3:
                                 p[x_pos] = clr2;
                                 break;
+
+                            default:
+                                break;
                         }
+                        break;
+
+                    default:
                         break;
                 }
             }
@@ -474,6 +512,9 @@ bt48x_ramdac_init(const device_t *info)
             break;
         case BT485A:
             ramdac->status = 0x20;
+            break;
+
+        default:
             break;
     }
 

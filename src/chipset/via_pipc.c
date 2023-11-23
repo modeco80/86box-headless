@@ -10,14 +10,10 @@
  *
  *
  *
- * Authors: Sarah Walker, <https://pcem-emulator.co.uk/>
- *          Miran Grca, <mgrca8@gmail.com>
- *          Melissa Goad, <mszoopers@protonmail.com>
+ * Authors: Miran Grca, <mgrca8@gmail.com>
  *          RichardG, <richardg867@gmail.com>
  *
- *          Copyright 2008-2020 Sarah Walker.
  *          Copyright 2016-2020 Miran Grca.
- *          Copyright 2020 Melissa Goad.
  *          Copyright 2020-2021 RichardG.
  */
 #include <stdarg.h>
@@ -41,6 +37,8 @@
 #include <86box/ddma.h>
 #include <86box/pci.h>
 #include <86box/pic.h>
+#include <86box/plat_fallthrough.h>
+#include <86box/plat_unused.h>
 #include <86box/port_92.h>
 #include <86box/hdc.h>
 #include <86box/hdc_ide.h>
@@ -59,13 +57,15 @@
 
 /* Most revision numbers (PCI-ISA bridge or otherwise) were lifted from PCI device
    listings on forums, as VIA's datasheets are not very helpful regarding those. */
-#define VIA_PIPC_586A 0x05862500
-#define VIA_PIPC_586B 0x05864700
-#define VIA_PIPC_596A 0x05960900
-#define VIA_PIPC_596B 0x05962300
-#define VIA_PIPC_686A 0x06861400
-#define VIA_PIPC_686B 0x06864000
-#define VIA_PIPC_8231 0x82311000
+#define VIA_PIPC_586A         0x05862500
+#define VIA_PIPC_586B         0x05864700
+#define VIA_PIPC_596A         0x05960900
+#define VIA_PIPC_596B         0x05962300
+#define VIA_PIPC_686A         0x06861400
+#define VIA_PIPC_686B         0x06864000
+#define VIA_PIPC_8231         0x82311000
+
+#define VIA_PIPC_FM_EMULATION 1
 
 enum {
     TRAP_DRQ = 0,
@@ -107,22 +107,30 @@ enum {
 typedef struct {
     struct _pipc_ *dev;
     void          *trap;
-    uint32_t      *sts_reg, *en_reg, mask;
+    uint32_t      *sts_reg;
+    uint32_t      *en_reg;
+    uint32_t       mask;
 } pipc_io_trap_t;
 
 typedef struct _pipc_ {
-    uint32_t local;
-    uint8_t  max_func, max_pcs;
+    uint8_t  max_func;
+    uint8_t  max_pcs;
+    uint8_t  pci_slot;
+    uint8_t  pad;
 
-    uint8_t pci_isa_regs[256],
-        ide_regs[256],
-        usb_regs[2][256],
-        power_regs[256],
-        ac97_regs[2][256], fmnmi_regs[4];
+    uint8_t pci_isa_regs[256];
+    uint8_t ide_regs[256];
+    uint8_t usb_regs[2][256];
+    uint8_t power_regs[256];
+    uint8_t ac97_regs[2][256];
+    uint8_t fmnmi_regs[4];
+    uint8_t fmnmi_status;
+
+    uint32_t local;
 
     sff8038i_t    *bm[2];
     nvr_t         *nvr;
-    int            nvr_enabled, slot;
+    int            nvr_enabled;
     ddma_t        *ddma;
     smbus_piix4_t *smbus;
     usb_t         *usb[2];
@@ -130,9 +138,14 @@ typedef struct _pipc_ {
     acpi_t        *acpi;
     pipc_io_trap_t io_traps[TRAP_MAX];
 
-    void    *gameport, *ac97, *sio, *hwm;
+    void    *gameport;
+    void    *ac97;
+    void    *sio;
+    void    *hwm;
     sb_t    *sb;
-    uint16_t midigame_base, sb_base, fmnmi_base;
+    uint16_t midigame_base;
+    uint16_t sb_base;
+    uint16_t fmnmi_base;
 } pipc_t;
 
 #ifdef ENABLE_PIPC_LOG
@@ -160,7 +173,7 @@ static uint8_t pipc_read(int func, int addr, void *priv);
 static void    pipc_write(int func, int addr, uint8_t val, void *priv);
 
 static void
-pipc_io_trap_pact(int size, uint16_t addr, uint8_t write, uint8_t val, void *priv)
+pipc_io_trap_pact(UNUSED(int size), UNUSED(uint16_t addr), UNUSED(uint8_t write), UNUSED(uint8_t val), void *priv)
 {
     pipc_io_trap_t *trap = (pipc_io_trap_t *) priv;
 
@@ -173,7 +186,7 @@ pipc_io_trap_pact(int size, uint16_t addr, uint8_t write, uint8_t val, void *pri
 }
 
 static void
-pipc_io_trap_glb(int size, uint16_t addr, uint8_t write, uint8_t val, void *priv)
+pipc_io_trap_glb(UNUSED(int size), UNUSED(uint16_t addr), uint8_t write, UNUSED(uint8_t val), void *priv)
 {
     pipc_io_trap_t *trap = (pipc_io_trap_t *) priv;
 
@@ -197,10 +210,9 @@ pipc_reset_hard(void *priv)
     pipc_log("PIPC: reset_hard()\n");
 
     pipc_t  *dev      = (pipc_t *) priv;
-    uint16_t old_base = (dev->ide_regs[0x20] & 0xf0) | (dev->ide_regs[0x21] << 8);
 
-    sff_bus_master_reset(dev->bm[0], old_base);
-    sff_bus_master_reset(dev->bm[1], old_base + 8);
+    sff_bus_master_reset(dev->bm[0]);
+    sff_bus_master_reset(dev->bm[1]);
 
     memset(dev->pci_isa_regs, 0, 256);
     memset(dev->ide_regs, 0, 256);
@@ -224,7 +236,8 @@ pipc_reset_hard(void *priv)
     dev->pci_isa_regs[0x4a] = 0x04;
     dev->pci_isa_regs[0x4f] = 0x03;
 
-    dev->pci_isa_regs[0x50] = (dev->local >= VIA_PIPC_686A) ? 0x0e : 0x24; /* 686A/B default value does not line up with default bits */
+    /* 686A/B default value does not line up with default bits */
+    dev->pci_isa_regs[0x50] = (dev->local >= VIA_PIPC_686A) ? 0x0e : 0x24;
     dev->pci_isa_regs[0x59] = 0x04;
     if (dev->local >= VIA_PIPC_686A)
         dev->pci_isa_regs[0x5a] = dev->pci_isa_regs[0x5f] = 0x04;
@@ -330,6 +343,8 @@ pipc_reset_hard(void *priv)
             case VIA_PIPC_8231:
                 dev->usb_regs[i][0x08] = 0x1e;
                 break;
+            default:
+                break;
         }
 
         dev->usb_regs[i][0x0a] = 0x03;
@@ -389,6 +404,9 @@ pipc_reset_hard(void *priv)
 
             case VIA_PIPC_686B:
                 dev->power_regs[0x08] = 0x40;
+                break;
+
+            default:
                 break;
         }
         if (dev->local == VIA_PIPC_686B)
@@ -451,6 +469,9 @@ pipc_reset_hard(void *priv)
                 case VIA_PIPC_8231:
                     dev->ac97_regs[i][0x08] = (i == 0) ? 0x40 : 0x20;
                     break;
+
+                default:
+                    break;
             }
 
             if (i == 0) {
@@ -508,7 +529,8 @@ pipc_reset_hard(void *priv)
 static void
 pipc_ide_handlers(pipc_t *dev)
 {
-    uint16_t main, side;
+    uint16_t main;
+    uint16_t side;
 
     ide_pri_disable();
     ide_sec_disable();
@@ -544,19 +566,17 @@ pipc_ide_handlers(pipc_t *dev)
 static void
 pipc_ide_irqs(pipc_t *dev)
 {
-    int irq_mode[2] = { 0, 0 };
+    int irq_mode[2] = { IRQ_MODE_LEGACY, IRQ_MODE_LEGACY };
 
     if (dev->ide_regs[0x09] & 0x01)
-        irq_mode[0] = (dev->ide_regs[0x3d] & 0x01);
+        irq_mode[0] = (dev->ide_regs[0x3d] & 0x01) ? IRQ_MODE_PCI_IRQ_PIN : IRQ_MODE_LEGACY;
 
     if (dev->ide_regs[0x09] & 0x04)
-        irq_mode[1] = (dev->ide_regs[0x3d] & 0x01);
+        irq_mode[1] = (dev->ide_regs[0x3d] & 0x01) ? IRQ_MODE_PCI_IRQ_PIN : IRQ_MODE_LEGACY;
 
-    sff_set_irq_mode(dev->bm[0], 0, irq_mode[0]);
-    sff_set_irq_mode(dev->bm[0], 1, irq_mode[1]);
+    sff_set_irq_mode(dev->bm[0], irq_mode[0]);
 
-    sff_set_irq_mode(dev->bm[1], 0, irq_mode[0]);
-    sff_set_irq_mode(dev->bm[1], 1, irq_mode[1]);
+    sff_set_irq_mode(dev->bm[1], irq_mode[1]);
 }
 
 static void
@@ -571,10 +591,14 @@ pipc_bus_master_handlers(pipc_t *dev)
 static void
 pipc_pcs_update(pipc_t *dev)
 {
-    uint8_t  i, io_base_reg, io_mask_reg, io_mask_shift, enable;
-    uint16_t io_base, io_mask;
+    uint8_t  io_base_reg;
+    uint8_t  io_mask_reg;
+    uint8_t  io_mask_shift;
+    uint8_t  enable;
+    uint16_t io_base;
+    uint16_t io_mask;
 
-    for (i = 0; i <= dev->max_pcs; i++) {
+    for (uint8_t i = 0; i <= dev->max_pcs; i++) {
         if (i & 2) {
             io_base_reg = 0x8c;
             io_mask_reg = 0x8a;
@@ -648,7 +672,6 @@ static void
 pipc_trap_update_596(void *priv)
 {
     pipc_t *dev = (pipc_t *) priv;
-    int     i;
 
     /* TRAP_DRQ (00000001) and TRAP_PIRQ (00000002) not implemented. */
 
@@ -679,7 +702,7 @@ pipc_trap_update_596(void *priv)
        by the Positive Decoding Control registers. I couldn't probe this behavior on hardware.
        It's better to be safe and cover all of them than to assume Intel-like behavior (one range). */
 
-    for (i = 0; i < 3; i++) {
+    for (uint8_t i = 0; i < 3; i++) {
         pipc_trap_update_paden(dev, TRAP_AUD_MIDI_0 + i,
                                0x00000400, (dev->local <= VIA_PIPC_596B) || (dev->power_regs[0x40] & 0x01),
                                0x300 + (0x10 * i), 4);
@@ -724,8 +747,8 @@ pipc_codec_handlers(pipc_t *dev, uint8_t modem)
 static uint8_t
 pipc_fmnmi_read(uint16_t addr, void *priv)
 {
-    pipc_t *dev = (pipc_t *) priv;
-    uint8_t ret = dev->fmnmi_regs[addr & 0x03];
+    const pipc_t *dev = (pipc_t *) priv;
+    uint8_t       ret = dev->fmnmi_regs[addr & 0x03];
 
     pipc_log("PIPC: fmnmi_read(%02X) = %02X\n", addr & 0x03, ret);
 
@@ -760,10 +783,10 @@ pipc_fmnmi_handlers(pipc_t *dev, uint8_t modem)
 static uint8_t
 pipc_fm_read(uint16_t addr, void *priv)
 {
+    const pipc_t *dev = (pipc_t *) priv;
 #ifdef VIA_PIPC_FM_EMULATION
-    uint8_t ret = 0x00;
+    uint8_t ret = ((addr & 0x03) == 0x00) ? dev->fmnmi_status : 0x00;
 #else
-    pipc_t *dev = (pipc_t *) priv;
     uint8_t ret = dev->sb->opl.read(addr, dev->sb->opl.priv);
 #endif
 
@@ -784,12 +807,26 @@ pipc_fm_write(uint16_t addr, uint8_t val, void *priv)
        index port, and only fires NMI/SMI when writing to the data port. */
     if (!(addr & 0x01)) {
         dev->fmnmi_regs[0x00] = (addr & 0x02) ? 0x02 : 0x01;
-        dev->fmnmi_regs[0x01] = val;
-    } else {
         dev->fmnmi_regs[0x02] = val;
+    } else {
+        dev->fmnmi_regs[0x01] = val;
+
+        /* TODO: Probe how real hardware handles OPL timers. This assumed implementation
+           just sets the relevant interrupt flags as soon as a timer is started. */
+        if (!(addr & 0x02) && (dev->fmnmi_regs[0x02] == 0x04)) {
+            if (val & 0x80)
+                dev->fmnmi_status = 0x00;
+            if ((val & 0x41) == 0x01)
+                dev->fmnmi_status |= 0x40;
+            if ((val & 0x22) == 0x02)
+                dev->fmnmi_status |= 0x20;
+            if (dev->fmnmi_status & 0x60)
+                dev->fmnmi_status |= 0x80;
+        }
 
         /* Fire NMI/SMI if enabled. */
         if (dev->ac97_regs[0][0x48] & 0x01) {
+            pipc_log("PIPC: Raising %s\n", (dev->ac97_regs[0][0x48] & 0x04) ? "SMI" : "NMI");
             if (dev->ac97_regs[0][0x48] & 0x04)
                 smi_raise();
             else
@@ -851,7 +888,26 @@ pipc_sb_handlers(pipc_t *dev, uint8_t modem)
 
     if (dev->ac97_regs[0][0x42] & 0x04) {
         io_sethandler(0x388, 4, pipc_fm_read, NULL, NULL, pipc_fm_write, NULL, NULL, dev);
+#ifndef VIA_PIPC_FM_EMULATION
+        dev->sb->opl_enabled = 1;
+    } else {
+        dev->sb->opl_enabled = 0;
+#endif
     }
+}
+
+static void
+pipc_sb_get_buffer(int32_t *buffer, int len, void *priv)
+{
+    pipc_t *dev = (pipc_t *) priv;
+
+    /* Poll SB audio only if the legacy block is enabled. */
+#ifdef VIA_PIPC_FM_EMULATION
+    if (dev->ac97_regs[0][0x42] & 0x01)
+#else
+    if (dev->ac97_regs[0][0x42] & 0x05)
+#endif
+        sb_get_buffer_sbpro(buffer, len, dev->sb);
 }
 
 static uint8_t
@@ -1028,9 +1084,13 @@ pipc_write(int func, int addr, uint8_t val, void *priv)
 
                 break;
 
+            case 0x44:
+                dev->pci_isa_regs[0x44] = val;
+                break;
+
             case 0x47:
                 if (val & 0x01)
-                    trc_write(0x0047, (val & 0x80) ? 0x06 : 0x04, NULL);
+                    pci_write(0x0cf9, (val & 0x80) ? 0x06 : 0x04, NULL);
                 pic_set_shadow(!!(val & 0x10));
                 pic_elcr_io_handler(!!(val & 0x20));
                 dev->pci_isa_regs[0x47] = val & 0xfe;
@@ -1119,7 +1179,7 @@ pipc_write(int func, int addr, uint8_t val, void *priv)
             case 0x71:
             case 0x72:
             case 0x73:
-                dev->pci_isa_regs[(addr - 0x44)] = val;
+                dev->pci_isa_regs[addr - 0x44] = val;
                 break;
 
             case 0x74:
@@ -1389,7 +1449,7 @@ pipc_write(int func, int addr, uint8_t val, void *priv)
             case 0x61:
             case 0x62:
             case 0x63:
-                dev->power_regs[(addr - 0x58)] = val;
+                dev->power_regs[addr - 0x58] = val;
                 break;
 
             case 0x70:
@@ -1411,7 +1471,7 @@ pipc_write(int func, int addr, uint8_t val, void *priv)
             case 0xd2:
                 if (dev->local == VIA_PIPC_686B)
                     smbus_piix4_setclock(dev->smbus, (val & 0x04) ? 65536 : 16384);
-                /* fall-through */
+                fallthrough;
 
             case 0x90:
             case 0x91:
@@ -1524,33 +1584,44 @@ pipc_write(int func, int addr, uint8_t val, void *priv)
 }
 
 static void
-pipc_reset(void *p)
+pipc_reset(void *priv)
 {
-    pipc_t *dev     = (pipc_t *) p;
+    pipc_t *dev     = (pipc_t *) priv;
     uint8_t pm_func = dev->usb[1] ? 4 : 3;
 
-    pipc_write(pm_func, 0x41, 0x00, p);
-    pipc_write(pm_func, 0x48, 0x01, p);
-    pipc_write(pm_func, 0x49, 0x00, p);
+    pipc_write(pm_func, 0x41, 0x00, priv);
+    pipc_write(pm_func, 0x48, 0x01, priv);
+    pipc_write(pm_func, 0x49, 0x00, priv);
 
-    pipc_write(1, 0x04, 0x80, p);
-    pipc_write(1, 0x09, 0x85, p);
-    pipc_write(1, 0x10, 0xf1, p);
-    pipc_write(1, 0x11, 0x01, p);
-    pipc_write(1, 0x14, 0xf5, p);
-    pipc_write(1, 0x15, 0x03, p);
-    pipc_write(1, 0x18, 0x71, p);
-    pipc_write(1, 0x19, 0x01, p);
-    pipc_write(1, 0x1c, 0x75, p);
-    pipc_write(1, 0x1d, 0x03, p);
-    pipc_write(1, 0x20, 0x01, p);
-    pipc_write(1, 0x21, 0xcc, p);
+    pipc_write(1, 0x04, 0x80, priv);
+    pipc_write(1, 0x09, 0x85, priv);
+    pipc_write(1, 0x10, 0xf1, priv);
+    pipc_write(1, 0x11, 0x01, priv);
+    pipc_write(1, 0x14, 0xf5, priv);
+    pipc_write(1, 0x15, 0x03, priv);
+    pipc_write(1, 0x18, 0x71, priv);
+    pipc_write(1, 0x19, 0x01, priv);
+    pipc_write(1, 0x1c, 0x75, priv);
+    pipc_write(1, 0x1d, 0x03, priv);
+    pipc_write(1, 0x20, 0x01, priv);
+    pipc_write(1, 0x21, 0xcc, priv);
     if (dev->local <= VIA_PIPC_586B)
-        pipc_write(1, 0x40, 0x04, p);
+        pipc_write(1, 0x40, 0x04, priv);
     else
-        pipc_write(1, 0x40, 0x00, p);
+        pipc_write(1, 0x40, 0x00, priv);
 
-    pipc_write(0, 0x77, 0x00, p);
+    if (dev->local < VIA_PIPC_586B)
+        pipc_write(0, 0x44, 0x00, priv);
+
+    pipc_write(0, 0x77, 0x00, priv);
+
+    sff_set_slot(dev->bm[0], dev->pci_slot);
+    sff_set_slot(dev->bm[1], dev->pci_slot);
+
+    if (dev->local >= VIA_PIPC_686A)
+        ac97_via_set_slot(dev->ac97, dev->pci_slot, PCI_INTC);
+    if (dev->acpi)
+        acpi_set_slot(dev->acpi, dev->pci_slot);
 }
 
 static void *
@@ -1562,26 +1633,22 @@ pipc_init(const device_t *info)
     pipc_log("PIPC: init()\n");
 
     dev->local = info->local;
-    dev->slot  = pci_add_card(PCI_ADD_SOUTHBRIDGE, pipc_read, pipc_write, dev);
+    pci_add_card(PCI_ADD_SOUTHBRIDGE, pipc_read, pipc_write, dev, &dev->pci_slot);
 
     dev->bm[0] = device_add_inst(&sff8038i_device, 1);
-    sff_set_slot(dev->bm[0], dev->slot);
-    sff_set_irq_mode(dev->bm[0], 0, 0);
-    sff_set_irq_mode(dev->bm[0], 1, 0);
+    sff_set_irq_mode(dev->bm[0], IRQ_MODE_LEGACY);
     sff_set_irq_pin(dev->bm[0], PCI_INTA);
 
     dev->bm[1] = device_add_inst(&sff8038i_device, 2);
-    sff_set_slot(dev->bm[1], dev->slot);
-    sff_set_irq_mode(dev->bm[1], 0, 0);
-    sff_set_irq_mode(dev->bm[1], 1, 0);
+    sff_set_irq_mode(dev->bm[1], IRQ_MODE_LEGACY);
     sff_set_irq_pin(dev->bm[1], PCI_INTA);
-
-    dev->nvr = device_add(&via_nvr_device);
 
     if (dev->local == VIA_PIPC_686B)
         dev->smbus = device_add(&via_smbus_device);
     else if (dev->local >= VIA_PIPC_596A)
         dev->smbus = device_add(&piix4_smbus_device);
+
+    dev->nvr = device_add(&via_nvr_device);
 
     if (dev->local >= VIA_PIPC_596A) {
         dev->acpi = device_add(&acpi_via_596b_device);
@@ -1596,13 +1663,9 @@ pipc_init(const device_t *info)
         dev->usb[1] = device_add_inst(&usb_device, 2);
 
         dev->ac97 = device_add(&ac97_via_device);
-        ac97_via_set_slot(dev->ac97, dev->slot, PCI_INTC);
 
         dev->sb = device_add_inst(&sb_pro_compat_device, 2);
-#ifndef VIA_PIPC_FM_EMULATION
-        dev->sb->opl_enabled = 1;
-#endif
-        sound_add_handler(sb_get_buffer_sbpro, dev->sb);
+        sound_add_handler(pipc_sb_get_buffer, dev);
 
         dev->gameport = gameport_add(&gameport_sio_device);
 
@@ -1629,7 +1692,6 @@ pipc_init(const device_t *info)
         dev->ddma = device_add(&ddma_device);
 
     if (dev->acpi) {
-        acpi_set_slot(dev->acpi, dev->slot);
         acpi_set_nvr(dev->acpi, dev->nvr);
 
         acpi_init_gporeg(dev->acpi, 0xff, 0xbf, 0xff, 0x7f);
@@ -1639,13 +1701,13 @@ pipc_init(const device_t *info)
 }
 
 static void
-pipc_close(void *p)
+pipc_close(void *priv)
 {
-    pipc_t *dev = (pipc_t *) p;
+    pipc_t *dev = (pipc_t *) priv;
 
     pipc_log("PIPC: close()\n");
 
-    for (int i = 0; i < TRAP_MAX; i++)
+    for (uint8_t i = 0; i < TRAP_MAX; i++)
         io_trap_remove(dev->io_traps[i].trap);
 
     free(dev);

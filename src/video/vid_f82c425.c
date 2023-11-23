@@ -24,12 +24,12 @@
  *
  * Authors: Fred N. van Kempen, <decwiz@yahoo.com>
  *          Miran Grca, <mgrca8@gmail.com>
- *          Sarah Walker, <https://pcem-emulator.co.uk/>
+ *          John Elliott, <jce@seasip.info>
  *          Lubomir Rintel, <lkundrak@v3.sk>
  *
  *          Copyright 2018-2019 Fred N. van Kempen.
  *          Copyright 2018-2019 Miran Grca.
- *          Copyright 2018-2019 Sarah Walker.
+ *          Copyright 2018-2019 John Elliott.
  *          Copyright 2021      Lubomir Rintel.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -39,7 +39,7 @@
  *
  * This program is  distributed in the hope that it will be useful, but
  * WITHOUT   ANY  WARRANTY;  without  even   the  implied  warranty  of
- * MERCHANTABILITY  or FITNESS	FOR A PARTICULAR  PURPOSE. See	the GNU
+ * MERCHANTABILITY  or FITNESS  FOR A PARTICULAR  PURPOSE. See  the GNU
  * General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -63,6 +63,7 @@
 #include "cpu.h"
 #include <86box/video.h>
 #include <86box/vid_cga.h>
+#include <86box/plat_unused.h>
 
 #define F82C425_XSIZE 640
 #define F82C425_YSIZE 200
@@ -179,9 +180,7 @@ f82c425_smartmap_add(int a, int b, int sat)
 static void
 f82c425_smartmap(f82c425_t *f82c425)
 {
-    int i;
-
-    for (i = 0; i < 256; i++) {
+    for (uint16_t i = 0; i < 256; i++) {
         uint8_t bg = f82c425_rgbi(i >> 4);
         uint8_t fg = f82c425_rgbi(i & 0xf);
 
@@ -223,16 +222,14 @@ f82c425_smartmap(f82c425_t *f82c425)
 static void
 f82c425_colormap(f82c425_t *f82c425)
 {
-    int i;
-
-    for (i = 0; i < 4; i++)
+    for (uint8_t i = 0; i < 4; i++)
         colormap[i] = f82c425_makecol(5 * i, 0, f82c425->function & 0x80);
 }
 
 static void
-f82c425_out(uint16_t addr, uint8_t val, void *p)
+f82c425_out(uint16_t addr, uint8_t val, void *priv)
 {
-    f82c425_t *f82c425 = (f82c425_t *) p;
+    f82c425_t *f82c425 = (f82c425_t *) priv;
 
     if (addr == 0x3d4)
         f82c425->crtcreg = val;
@@ -271,13 +268,16 @@ f82c425_out(uint16_t addr, uint8_t val, void *p)
             f82c425_smartmap(f82c425);
             f82c425_colormap(f82c425);
             break;
+
+        default:
+            break;
     }
 }
 
 static uint8_t
-f82c425_in(uint16_t addr, void *p)
+f82c425_in(uint16_t addr, void *priv)
 {
-    f82c425_t *f82c425 = (f82c425_t *) p;
+    f82c425_t *f82c425 = (f82c425_t *) priv;
 
     if ((f82c425->function & 0x01) == 0)
         return 0xff;
@@ -303,24 +303,28 @@ f82c425_in(uint16_t addr, void *p)
             return f82c425->timing;
         case 0xdf:
             return f82c425->function;
+
+        default:
+            break;
     }
 
     return 0xff;
 }
 
 static void
-f82c425_write(uint32_t addr, uint8_t val, void *p)
+f82c425_write(uint32_t addr, uint8_t val, void *priv)
 {
-    f82c425_t *f82c425 = (f82c425_t *) p;
+    f82c425_t *f82c425 = (f82c425_t *) priv;
 
     f82c425->vram[addr & 0x3fff] = val;
     cycles -= 4;
 }
 
 static uint8_t
-f82c425_read(uint32_t addr, void *p)
+f82c425_read(uint32_t addr, void *priv)
 {
-    f82c425_t *f82c425 = (f82c425_t *) p;
+    const f82c425_t *f82c425 = (f82c425_t *) priv;
+
     cycles -= 4;
 
     return f82c425->vram[addr & 0x3fff];
@@ -330,7 +334,8 @@ static void
 f82c425_recalctimings(f82c425_t *f82c425)
 {
     double disptime;
-    double _dispontime, _dispofftime;
+    double _dispontime;
+    double _dispofftime;
 
     if (f82c425->function & 0x08) {
         cga_recalctimings(&f82c425->cga);
@@ -349,8 +354,9 @@ static void
 f82c425_text_row(f82c425_t *f82c425)
 {
     uint32_t colors[2];
-    int      x, c;
-    uint8_t  chr, attr;
+    int      c;
+    uint8_t  chr;
+    uint8_t  attr;
     int      drawcursor;
     int      cursorline;
     int      blink;
@@ -371,7 +377,7 @@ f82c425_text_row(f82c425_t *f82c425)
         cursorline = ((f82c425->cga.crtc[0x0a] & 0x0F) <= sc) && ((f82c425->cga.crtc[0x0b] & 0x0F) >= sc);
     }
 
-    for (x = 0; x < columns; x++) {
+    for (int x = 0; x < columns; x++) {
         chr        = f82c425->vram[(addr + 2 * x) & 0x3FFF];
         attr       = f82c425->vram[(addr + 2 * x + 1) & 0x3FFF];
         drawcursor = ((ma == ca) && cursorline && (f82c425->cga.cgamode & 0x8) && (f82c425->cga.cgablink & 0x10));
@@ -392,12 +398,12 @@ f82c425_text_row(f82c425_t *f82c425)
         if (f82c425->cga.cgamode & 0x01) {
             /* High resolution (80 cols) */
             for (c = 0; c < sl; c++) {
-                ((uint32_t *) buffer32->line[f82c425->displine])[(x << 3) + c] = colors[(fontdat[chr][sc] & (1 << (c ^ 7))) ? 1 : 0];
+                (buffer32->line[f82c425->displine])[(x << 3) + c] = colors[(fontdat[chr][sc] & (1 << (c ^ 7))) ? 1 : 0];
             }
         } else {
             /* Low resolution (40 columns, stretch pixels horizontally) */
             for (c = 0; c < sl; c++) {
-                ((uint32_t *) buffer32->line[f82c425->displine])[(x << 4) + c * 2] = ((uint32_t *) buffer32->line[f82c425->displine])[(x << 4) + c * 2 + 1] = colors[(fontdat[chr][sc] & (1 << (c ^ 7))) ? 1 : 0];
+                (buffer32->line[f82c425->displine])[(x << 4) + c * 2] = (buffer32->line[f82c425->displine])[(x << 4) + c * 2 + 1] = colors[(fontdat[chr][sc] & (1 << (c ^ 7))) ? 1 : 0];
             }
         }
 
@@ -409,7 +415,6 @@ f82c425_text_row(f82c425_t *f82c425)
 static void
 f82c425_cgaline6(f82c425_t *f82c425)
 {
-    int      x, c;
     uint8_t  dat;
     uint16_t addr;
 
@@ -417,12 +422,12 @@ f82c425_cgaline6(f82c425_t *f82c425)
 
     addr = ((f82c425->displine) & 1) * 0x2000 + (f82c425->displine >> 1) * 80 + ((ma & ~1) << 1);
 
-    for (x = 0; x < 80; x++) {
+    for (uint8_t x  = 0; x < 80; x++) {
         dat = f82c425->vram[addr & 0x3FFF];
         addr++;
 
-        for (c = 0; c < 8; c++) {
-            ((uint32_t *) buffer32->line[f82c425->displine])[x * 8 + c] = colormap[dat & 0x80 ? 3 : 0];
+        for (uint8_t c = 0; c < 8; c++) {
+            (buffer32->line[f82c425->displine])[x * 8 + c] = colormap[dat & 0x80 ? 3 : 0];
 
             dat = dat << 1;
         }
@@ -433,23 +438,23 @@ f82c425_cgaline6(f82c425_t *f82c425)
 static void
 f82c425_cgaline4(f82c425_t *f82c425)
 {
-    int      x, c;
-    uint8_t  dat, pattern;
+    uint8_t  dat;
+    uint8_t  pattern;
     uint16_t addr;
 
     uint16_t ma = (f82c425->cga.crtc[0x0d] | (f82c425->cga.crtc[0x0c] << 8)) & 0x3fff;
     addr        = ((f82c425->displine) & 1) * 0x2000 + (f82c425->displine >> 1) * 80 + ((ma & ~1) << 1);
 
-    for (x = 0; x < 80; x++) {
+    for (uint8_t x = 0; x < 80; x++) {
         dat = f82c425->vram[addr & 0x3FFF];
         addr++;
 
-        for (c = 0; c < 4; c++) {
+        for (uint8_t c = 0; c < 4; c++) {
             pattern = (dat & 0xC0) >> 6;
             if (!(f82c425->cga.cgamode & 0x08))
                 pattern = 0;
 
-            ((uint32_t *) buffer32->line[f82c425->displine])[x * 8 + 2 * c] = ((uint32_t *) buffer32->line[f82c425->displine])[x * 8 + 2 * c + 1] = colormap[pattern & 3];
+            (buffer32->line[f82c425->displine])[x * 8 + 2 * c] = (buffer32->line[f82c425->displine])[x * 8 + 2 * c + 1] = colormap[pattern & 3];
 
             dat = dat << 2;
         }
@@ -457,9 +462,9 @@ f82c425_cgaline4(f82c425_t *f82c425)
 }
 
 static void
-f82c425_poll(void *p)
+f82c425_poll(void *priv)
 {
-    f82c425_t *f82c425 = (f82c425_t *) p;
+    f82c425_t *f82c425 = (f82c425_t *) priv;
 
     if (f82c425->video_options != st_video_options || !!(f82c425->function & 1) != st_enabled) {
         f82c425->video_options = st_video_options;
@@ -507,6 +512,9 @@ f82c425_poll(void *p)
                 case 0x00:
                 case 0x01:
                     f82c425_text_row(f82c425);
+                    break;
+
+                default:
                     break;
             }
         }
@@ -563,9 +571,10 @@ f82c425_poll(void *p)
 }
 
 static void *
-f82c425_init(const device_t *info)
+f82c425_init(UNUSED(const device_t *info))
 {
     f82c425_t *f82c425 = malloc(sizeof(f82c425_t));
+
     memset(f82c425, 0, sizeof(f82c425_t));
     cga_init(&f82c425->cga);
     video_inform(VIDEO_FLAG_TYPE_CGA, &timing_f82c425);
@@ -598,18 +607,18 @@ f82c425_init(const device_t *info)
 }
 
 static void
-f82c425_close(void *p)
+f82c425_close(void *priv)
 {
-    f82c425_t *f82c425 = (f82c425_t *) p;
+    f82c425_t *f82c425 = (f82c425_t *) priv;
 
     free(f82c425->vram);
     free(f82c425);
 }
 
 static void
-f82c425_speed_changed(void *p)
+f82c425_speed_changed(void *priv)
 {
-    f82c425_t *f82c425 = (f82c425_t *) p;
+    f82c425_t *f82c425 = (f82c425_t *) priv;
 
     f82c425_recalctimings(f82c425);
 }

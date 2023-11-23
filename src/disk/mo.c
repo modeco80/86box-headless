@@ -49,6 +49,8 @@
 #    include <unistd.h>
 #endif
 
+#define IDE_ATAPI_IS_EARLY             id->sc->pad0
+
 mo_drive_t mo_drives[MO_NUM];
 
 /* Table of all SCSI commands and their flags, needed for the new disc change / not ready handler. */
@@ -118,7 +120,7 @@ const uint8_t mo_command_flags[0x100] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
-static uint64_t mo_mode_sense_page_flags = (GPMODEP_ALL_PAGES);
+static uint64_t mo_mode_sense_page_flags = GPMODEP_ALL_PAGES;
 
 static const mode_sense_pages_t mo_mode_sense_pages_default =
     // clang-format off
@@ -306,9 +308,7 @@ mo_log(const char *fmt, ...)
 int
 find_mo_for_channel(uint8_t channel)
 {
-    uint8_t i = 0;
-
-    for (i = 0; i < MO_NUM; i++) {
+    for (uint8_t i = 0; i < MO_NUM; i++) {
         if ((mo_drives[i].bus_type == MO_BUS_ATAPI) && (mo_drives[i].ide_channel == channel))
             return i;
     }
@@ -318,9 +318,9 @@ find_mo_for_channel(uint8_t channel)
 static int
 mo_load_abort(mo_t *dev)
 {
-    if (dev->drv->f)
-        fclose(dev->drv->f);
-    dev->drv->f           = NULL;
+    if (dev->drv->fp)
+        fclose(dev->drv->fp);
+    dev->drv->fp           = NULL;
     dev->drv->medium_size = 0;
     dev->drv->sector_size = 0;
     mo_eject(dev->id); /* Make sure the host OS knows we've rejected (and ejected) the image. */
@@ -340,16 +340,16 @@ int
 mo_load(mo_t *dev, char *fn)
 {
     int          is_mdi;
-    uint32_t     size = 0;
-    unsigned int i, found = 0;
+    uint32_t     size  = 0;
+    unsigned int found = 0;
 
     is_mdi = image_is_mdi(fn);
 
-    dev->drv->f = plat_fopen(fn, dev->drv->read_only ? "rb" : "rb+");
-    if (!dev->drv->f) {
+    dev->drv->fp = plat_fopen(fn, dev->drv->read_only ? "rb" : "rb+");
+    if (!dev->drv->fp) {
         if (!dev->drv->read_only) {
-            dev->drv->f = plat_fopen(fn, "rb");
-            if (dev->drv->f)
+            dev->drv->fp = plat_fopen(fn, "rb");
+            if (dev->drv->fp)
                 dev->drv->read_only = 1;
             else
                 return mo_load_abort(dev);
@@ -357,8 +357,8 @@ mo_load(mo_t *dev, char *fn)
             return mo_load_abort(dev);
     }
 
-    fseek(dev->drv->f, 0, SEEK_END);
-    size = (uint32_t) ftell(dev->drv->f);
+    fseek(dev->drv->fp, 0, SEEK_END);
+    size = (uint32_t) ftell(dev->drv->fp);
 
     if (is_mdi) {
         /* This is a MDI image. */
@@ -366,7 +366,7 @@ mo_load(mo_t *dev, char *fn)
         dev->drv->base = 0x1000;
     }
 
-    for (i = 0; i < KNOWN_MO_TYPES; i++) {
+    for (uint8_t i = 0; i < KNOWN_MO_TYPES; i++) {
         if (size == (mo_types[i].sectors * mo_types[i].bytes_per_sector)) {
             found                 = 1;
             dev->drv->medium_size = mo_types[i].sectors;
@@ -378,7 +378,7 @@ mo_load(mo_t *dev, char *fn)
     if (!found)
         return mo_load_abort(dev);
 
-    if (fseek(dev->drv->f, dev->drv->base, SEEK_SET) == -1)
+    if (fseek(dev->drv->fp, dev->drv->base, SEEK_SET) == -1)
         fatal("mo_load(): Error seeking to the beginning of the file\n");
 
     strncpy(dev->drv->image_path, fn, sizeof(dev->drv->image_path) - 1);
@@ -403,16 +403,16 @@ mo_disk_reload(mo_t *dev)
 void
 mo_disk_unload(mo_t *dev)
 {
-    if (dev->drv->f) {
-        fclose(dev->drv->f);
-        dev->drv->f = NULL;
+    if (dev->drv->fp) {
+        fclose(dev->drv->fp);
+        dev->drv->fp = NULL;
     }
 }
 
 void
 mo_disk_close(mo_t *dev)
 {
-    if (dev->drv->f) {
+    if (dev->drv->fp) {
         mo_disk_unload(dev);
 
         memcpy(dev->drv->prev_image_path, dev->drv->image_path, sizeof(dev->drv->prev_image_path));
@@ -445,11 +445,11 @@ mo_init(mo_t *dev)
         dev->drv->bus_mode |= 1;
     mo_log("MO %i: Bus type %i, bus mode %i\n", dev->id, dev->drv->bus_type, dev->drv->bus_mode);
     if (dev->drv->bus_type < MO_BUS_SCSI) {
-        dev->phase          = 1;
-        dev->request_length = 0xEB14;
+        dev->tf->phase          = 1;
+        dev->tf->request_length = 0xEB14;
     }
-    dev->status        = READY_STAT | DSC_STAT;
-    dev->pos           = 0;
+    dev->tf->status    = READY_STAT | DSC_STAT;
+    dev->tf->pos       = 0;
     dev->packet_status = PHASE_NONE;
     mo_sense_key = mo_asc = mo_ascq = dev->unit_attention = 0;
 }
@@ -479,33 +479,9 @@ mo_current_mode(mo_t *dev)
     if (!mo_supports_pio(dev) && mo_supports_dma(dev))
         return 2;
     if (mo_supports_pio(dev) && mo_supports_dma(dev)) {
-        mo_log("MO %i: Drive supports both, setting to %s\n", dev->id, (dev->features & 1) ? "DMA" : "PIO");
-        return (dev->features & 1) ? 2 : 1;
-    }
-
-    return 0;
-}
-
-/* Translates ATAPI phase (DRQ, I/O, C/D) to SCSI phase (MSG, C/D, I/O). */
-int
-mo_atapi_phase_to_scsi(mo_t *dev)
-{
-    if (dev->status & 8) {
-        switch (dev->phase & 3) {
-            case 0:
-                return 0;
-            case 1:
-                return 2;
-            case 2:
-                return 1;
-            case 3:
-                return 7;
-        }
-    } else {
-        if ((dev->phase & 3) == 3)
-            return 3;
-        else
-            return 4;
+        mo_log("MO %i: Drive supports both, setting to %s\n", dev->id,
+               (dev->tf->features & 1) ? "DMA" : "PIO");
+        return (dev->tf->features & 1) ? 2 : 1;
     }
 
     return 0;
@@ -514,8 +490,8 @@ mo_atapi_phase_to_scsi(mo_t *dev)
 static void
 mo_mode_sense_load(mo_t *dev)
 {
-    FILE *f;
-    char  file_name[512];
+    FILE *fp;
+    char  fn[512];
 
     memset(&dev->ms_pages_saved, 0, sizeof(mode_sense_pages_t));
     if (mo_drives[dev->id].bus_type == MO_BUS_SCSI)
@@ -523,33 +499,33 @@ mo_mode_sense_load(mo_t *dev)
     else
         memcpy(&dev->ms_pages_saved, &mo_mode_sense_pages_default, sizeof(mode_sense_pages_t));
 
-    memset(file_name, 0, 512);
+    memset(fn, 0, 512);
     if (dev->drv->bus_type == MO_BUS_SCSI)
-        sprintf(file_name, "scsi_mo_%02i_mode_sense_bin", dev->id);
+        sprintf(fn, "scsi_mo_%02i_mode_sense_bin", dev->id);
     else
-        sprintf(file_name, "mo_%02i_mode_sense_bin", dev->id);
-    f = plat_fopen(nvr_path(file_name), "rb");
-    if (f) {
+        sprintf(fn, "mo_%02i_mode_sense_bin", dev->id);
+    fp = plat_fopen(nvr_path(fn), "rb");
+    if (fp) {
         /* Nothing to read, not used by MO. */
-        fclose(f);
+        fclose(fp);
     }
 }
 
 static void
 mo_mode_sense_save(mo_t *dev)
 {
-    FILE *f;
-    char  file_name[512];
+    FILE *fp;
+    char  fn[512];
 
-    memset(file_name, 0, 512);
+    memset(fn, 0, 512);
     if (dev->drv->bus_type == MO_BUS_SCSI)
-        sprintf(file_name, "scsi_mo_%02i_mode_sense_bin", dev->id);
+        sprintf(fn, "scsi_mo_%02i_mode_sense_bin", dev->id);
     else
-        sprintf(file_name, "mo_%02i_mode_sense_bin", dev->id);
-    f = plat_fopen(nvr_path(file_name), "wb");
-    if (f) {
+        sprintf(fn, "mo_%02i_mode_sense_bin", dev->id);
+    fp = plat_fopen(nvr_path(fn), "wb");
+    if (fp) {
         /* Nothing to write, not used by MO. */
-        fclose(f);
+        fclose(fp);
     }
 }
 
@@ -561,15 +537,15 @@ mo_mode_sense_read(mo_t *dev, uint8_t page_control, uint8_t page, uint8_t pos)
         case 0:
         case 3:
             return dev->ms_pages_saved.pages[page][pos];
-            break;
         case 1:
             return mo_mode_sense_pages_changeable.pages[page][pos];
-            break;
         case 2:
             if (dev->drv->bus_type == MO_BUS_SCSI)
                 return mo_mode_sense_pages_default_scsi.pages[page][pos];
             else
                 return mo_mode_sense_pages_default.pages[page][pos];
+
+        default:
             break;
     }
 
@@ -583,9 +559,6 @@ mo_mode_sense(mo_t *dev, uint8_t *buf, uint32_t pos, uint8_t page, uint8_t block
     uint8_t  page_control = (page >> 6) & 3;
 
     pf = mo_mode_sense_page_flags;
-
-    int i = 0;
-    int j = 0;
 
     uint8_t msplen;
 
@@ -602,14 +575,14 @@ mo_mode_sense(mo_t *dev, uint8_t *buf, uint32_t pos, uint8_t page, uint8_t block
         buf[pos++] = (dev->drv->sector_size & 0xff);
     }
 
-    for (i = 0; i < 0x40; i++) {
+    for (uint8_t i = 0; i < 0x40; i++) {
         if ((page == GPMODE_ALL_PAGES) || (page == i)) {
             if (pf & (1LL << ((uint64_t) page))) {
                 buf[pos++] = mo_mode_sense_read(dev, page_control, i, 0);
                 msplen     = mo_mode_sense_read(dev, page_control, i, 1);
                 buf[pos++] = msplen;
                 mo_log("MO %i: MODE SENSE: Page [%02X] length %i\n", dev->id, i, msplen);
-                for (j = 0; j < msplen; j++)
+                for (uint8_t j = 0; j < msplen; j++)
                     buf[pos++] = mo_mode_sense_read(dev, page_control, i, 2 + j);
             }
         }
@@ -621,9 +594,10 @@ mo_mode_sense(mo_t *dev, uint8_t *buf, uint32_t pos, uint8_t page, uint8_t block
 static void
 mo_update_request_length(mo_t *dev, int len, int block_len)
 {
-    int bt, min_len = 0;
+    int bt;
+    int min_len = 0;
 
-    dev->max_transfer_len = dev->request_length;
+    dev->max_transfer_len = dev->tf->request_length;
 
     /* For media access commands, make sure the requested DRQ length matches the block length. */
     switch (dev->current_cdb[0]) {
@@ -653,7 +627,8 @@ mo_update_request_length(mo_t *dev, int len, int block_len)
                     break;
                 }
             }
-            /*FALLTHROUGH*/
+            fallthrough;
+
         default:
             dev->packet_len = len;
             break;
@@ -666,9 +641,9 @@ mo_update_request_length(mo_t *dev, int len, int block_len)
         dev->max_transfer_len = 65534;
 
     if ((len <= dev->max_transfer_len) && (len >= min_len))
-        dev->request_length = dev->max_transfer_len = len;
+        dev->tf->request_length = dev->max_transfer_len = len;
     else if (len > dev->max_transfer_len)
-        dev->request_length = dev->max_transfer_len;
+        dev->tf->request_length = dev->max_transfer_len;
 
     return;
 }
@@ -696,11 +671,12 @@ mo_bus_speed(mo_t *dev)
 static void
 mo_command_common(mo_t *dev)
 {
-    double bytes_per_second, period;
+    double bytes_per_second;
+    double period;
 
-    dev->status = BUSY_STAT;
-    dev->phase  = 1;
-    dev->pos    = 0;
+    dev->tf->status = BUSY_STAT;
+    dev->tf->phase  = 1;
+    dev->tf->pos    = 0;
     if (dev->packet_status == PHASE_COMPLETE)
         dev->callback = 0.0;
     else {
@@ -762,8 +738,8 @@ static void
 mo_data_command_finish(mo_t *dev, int len, int block_len, int alloc_len, int direction)
 {
     mo_log("MO %i: Finishing command (%02X): %i, %i, %i, %i, %i\n",
-           dev->id, dev->current_cdb[0], len, block_len, alloc_len, direction, dev->request_length);
-    dev->pos = 0;
+           dev->id, dev->current_cdb[0], len, block_len, alloc_len, direction, dev->tf->request_length);
+    dev->tf->pos = 0;
     if (alloc_len >= 0) {
         if (alloc_len < len)
             len = alloc_len;
@@ -792,11 +768,12 @@ mo_data_command_finish(mo_t *dev, int len, int block_len, int alloc_len, int dir
     }
 
     mo_log("MO %i: Status: %i, cylinder %i, packet length: %i, position: %i, phase: %i\n",
-           dev->id, dev->packet_status, dev->request_length, dev->packet_len, dev->pos, dev->phase);
+           dev->id, dev->packet_status, dev->tf->request_length, dev->packet_len, dev->tf->pos,
+           dev->tf->phase);
 }
 
 static void
-mo_sense_clear(mo_t *dev, int command)
+mo_sense_clear(mo_t *dev, UNUSED(int command))
 {
     mo_sense_key = mo_asc = mo_ascq = 0;
 }
@@ -817,14 +794,14 @@ static void
 mo_cmd_error(mo_t *dev)
 {
     mo_set_phase(dev, SCSI_PHASE_STATUS);
-    dev->error = ((mo_sense_key & 0xf) << 4) | ABRT_ERR;
+    dev->tf->error = ((mo_sense_key & 0xf) << 4) | ABRT_ERR;
     if (dev->unit_attention)
-        dev->error |= MCR_ERR;
-    dev->status        = READY_STAT | ERR_STAT;
-    dev->phase         = 3;
-    dev->pos           = 0;
-    dev->packet_status = PHASE_ERROR;
-    dev->callback      = 50.0 * MO_TIME;
+        dev->tf->error |= MCR_ERR;
+    dev->tf->status        = READY_STAT | ERR_STAT;
+    dev->tf->phase         = 3;
+    dev->tf->pos           = 0;
+    dev->packet_status     = PHASE_ERROR;
+    dev->callback          = 50.0 * MO_TIME;
     mo_set_callback(dev);
     ui_sb_update_icon(SB_MO | dev->id, 0);
     mo_log("MO %i: [%02X] ERROR: %02X/%02X/%02X\n", dev->id, dev->current_cdb[0], mo_sense_key, mo_asc, mo_ascq);
@@ -834,14 +811,14 @@ static void
 mo_unit_attention(mo_t *dev)
 {
     mo_set_phase(dev, SCSI_PHASE_STATUS);
-    dev->error = (SENSE_UNIT_ATTENTION << 4) | ABRT_ERR;
+    dev->tf->error = (SENSE_UNIT_ATTENTION << 4) | ABRT_ERR;
     if (dev->unit_attention)
-        dev->error |= MCR_ERR;
-    dev->status        = READY_STAT | ERR_STAT;
-    dev->phase         = 3;
-    dev->pos           = 0;
-    dev->packet_status = PHASE_ERROR;
-    dev->callback      = 50.0 * MO_TIME;
+        dev->tf->error |= MCR_ERR;
+    dev->tf->status        = READY_STAT | ERR_STAT;
+    dev->tf->phase         = 3;
+    dev->tf->pos           = 0;
+    dev->packet_status     = PHASE_ERROR;
+    dev->callback          = 50.0 * MO_TIME;
     mo_set_callback(dev);
     ui_sb_update_icon(SB_MO | dev->id, 0);
     mo_log("MO %i: UNIT ATTENTION\n", dev->id);
@@ -927,7 +904,7 @@ mo_invalid_field(mo_t *dev)
     mo_asc       = ASC_INV_FIELD_IN_CMD_PACKET;
     mo_ascq      = 0;
     mo_cmd_error(dev);
-    dev->status = 0x53;
+    dev->tf->status = 0x53;
 }
 
 static void
@@ -937,14 +914,13 @@ mo_invalid_field_pl(mo_t *dev)
     mo_asc       = ASC_INV_FIELD_IN_PARAMETER_LIST;
     mo_ascq      = 0;
     mo_cmd_error(dev);
-    dev->status = 0x53;
+    dev->tf->status = 0x53;
 }
 
 static int
-mo_blocks(mo_t *dev, int32_t *len, int first_batch, int out)
+mo_blocks(mo_t *dev, int32_t *len, UNUSED(int first_batch), int out)
 {
     *len = 0;
-    int i;
 
     if (!dev->sector_len) {
         mo_command_complete(dev);
@@ -961,18 +937,18 @@ mo_blocks(mo_t *dev, int32_t *len, int first_batch, int out)
 
     *len = dev->requested_blocks * dev->drv->sector_size;
 
-    for (i = 0; i < dev->requested_blocks; i++) {
-        if (fseek(dev->drv->f, dev->drv->base + (dev->sector_pos * dev->drv->sector_size) + (i * dev->drv->sector_size), SEEK_SET) == 1)
+    for (int i = 0; i < dev->requested_blocks; i++) {
+        if (fseek(dev->drv->fp, dev->drv->base + (dev->sector_pos * dev->drv->sector_size) + (i * dev->drv->sector_size), SEEK_SET) == 1)
             break;
 
-        if (feof(dev->drv->f))
+        if (feof(dev->drv->fp))
             break;
 
         if (out) {
-            if (fwrite(dev->buffer + (i * dev->drv->sector_size), 1, dev->drv->sector_size, dev->drv->f) != dev->drv->sector_size)
+            if (fwrite(dev->buffer + (i * dev->drv->sector_size), 1, dev->drv->sector_size, dev->drv->fp) != dev->drv->sector_size)
                 fatal("mo_blocks(): Error writing data\n");
         } else {
-            if (fread(dev->buffer + (i * dev->drv->sector_size), 1, dev->drv->sector_size, dev->drv->f) != dev->drv->sector_size)
+            if (fread(dev->buffer + (i * dev->drv->sector_size), 1, dev->drv->sector_size, dev->drv->fp) != dev->drv->sector_size)
                 fatal("mo_blocks(): Error reading data\n");
         }
     }
@@ -1000,14 +976,14 @@ mo_format(mo_t *dev)
 
     mo_log("MO %i: Formatting media...\n", dev->id);
 
-    fseek(dev->drv->f, 0, SEEK_END);
-    size = ftell(dev->drv->f);
+    fseek(dev->drv->fp, 0, SEEK_END);
+    size = ftell(dev->drv->fp);
 
 #ifdef _WIN32
     HANDLE        fh;
     LARGE_INTEGER liSize;
 
-    fd = _fileno(dev->drv->f);
+    fd = _fileno(dev->drv->fp);
     fh = (HANDLE) _get_osfhandle(fd);
 
     liSize.QuadPart = 0;
@@ -1041,7 +1017,7 @@ mo_format(mo_t *dev)
         return;
     }
 #else
-    fd = fileno(dev->drv->f);
+    fd = fileno(dev->drv->fp);
 
     ret = ftruncate(fd, 0);
 
@@ -1080,13 +1056,13 @@ mo_erase(mo_t *dev)
     mo_buf_alloc(dev, dev->drv->sector_size);
     memset(dev->buffer, 0, dev->drv->sector_size);
 
-    fseek(dev->drv->f, dev->drv->base + (dev->sector_pos * dev->drv->sector_size), SEEK_SET);
+    fseek(dev->drv->fp, dev->drv->base + (dev->sector_pos * dev->drv->sector_size), SEEK_SET);
 
     for (i = 0; i < dev->requested_blocks; i++) {
-        if (feof(dev->drv->f))
+        if (feof(dev->drv->fp))
             break;
 
-        fwrite(dev->buffer, 1, dev->drv->sector_size, dev->drv->f);
+        fwrite(dev->buffer, 1, dev->drv->sector_size, dev->drv->fp);
     }
 
     mo_log("MO %i: Erased %i bytes of blocks...\n", dev->id, i * dev->drv->sector_size);
@@ -1112,7 +1088,8 @@ mo_pre_execution_check(mo_t *dev, uint8_t *cdb)
     int ready = 0;
 
     if ((cdb[0] != GPCMD_REQUEST_SENSE) && (dev->cur_lun == SCSI_LUN_USE_CDB) && (cdb[1] & 0xe0)) {
-        mo_log("MO %i: Attempting to execute a unknown command targeted at SCSI LUN %i\n", dev->id, ((dev->request_length >> 5) & 7));
+        mo_log("MO %i: Attempting to execute a unknown command targeted at SCSI LUN %i\n", dev->id,
+               ((dev->tf->request_length >> 5) & 7));
         mo_invalid_lun(dev);
         return 0;
     }
@@ -1137,7 +1114,7 @@ mo_pre_execution_check(mo_t *dev, uint8_t *cdb)
         return 0;
     }
 
-    ready = (dev->drv->f != NULL);
+    ready = (dev->drv->fp != NULL);
 
     /* If the drive is not ready, there is no reason to keep the
        UNIT ATTENTION condition present, as we only use it to mark
@@ -1183,7 +1160,9 @@ mo_pre_execution_check(mo_t *dev, uint8_t *cdb)
 static void
 mo_seek(mo_t *dev, uint32_t pos)
 {
-    /* mo_log("MO %i: Seek %08X\n", dev->id, pos); */
+#if 0
+    mo_log("MO %i: Seek %08X\n", dev->id, pos);
+#endif
     dev->sector_pos = pos;
 }
 
@@ -1200,14 +1179,14 @@ mo_reset(scsi_common_t *sc)
     mo_t *dev = (mo_t *) sc;
 
     mo_rezero(dev);
-    dev->status   = 0;
-    dev->callback = 0.0;
+    dev->tf->status         = 0;
+    dev->callback           = 0.0;
     mo_set_callback(dev);
-    dev->phase          = 1;
-    dev->request_length = 0xEB14;
-    dev->packet_status  = PHASE_NONE;
-    dev->unit_attention = 0;
-    dev->cur_lun        = SCSI_LUN_USE_CDB;
+    dev->tf->phase          = 1;
+    dev->tf->request_length = 0xEB14;
+    dev->packet_status      = PHASE_NONE;
+    dev->unit_attention     = 0;
+    dev->cur_lun            = SCSI_LUN_USE_CDB;
 }
 
 static void
@@ -1251,7 +1230,7 @@ mo_request_sense_for_scsi(scsi_common_t *sc, uint8_t *buffer, uint8_t alloc_leng
     mo_t *dev   = (mo_t *) sc;
     int   ready = 0;
 
-    ready = (dev->drv->f != NULL);
+    ready = (dev->drv->fp != NULL);
 
     if (!ready && dev->unit_attention) {
         /* If the drive is not ready, there is no reason to keep the
@@ -1283,11 +1262,14 @@ static void
 mo_command(scsi_common_t *sc, uint8_t *cdb)
 {
     mo_t    *dev = (mo_t *) sc;
-    int      pos = 0, block_desc = 0;
+    int      pos = 0;
+    int      block_desc = 0;
     int      ret;
-    int32_t  len, max_len;
+    int32_t  len;
+    int32_t  max_len;
     int32_t  alloc_length;
-    int      size_idx, idx = 0;
+    int      size_idx;
+    int      idx = 0;
     unsigned preamble_len;
     char     device_identify[9] = { '8', '6', 'B', '_', 'M', 'O', '0', '0', 0 };
     int32_t  blen               = 0;
@@ -1297,11 +1279,11 @@ mo_command(scsi_common_t *sc, uint8_t *cdb)
     uint8_t  scsi_id      = dev->drv->scsi_device_id & 0x0f;
 
     if (dev->drv->bus_type == MO_BUS_SCSI) {
-        BufLen = &scsi_devices[scsi_bus][scsi_id].buffer_length;
-        dev->status &= ~ERR_STAT;
+        BufLen          = &scsi_devices[scsi_bus][scsi_id].buffer_length;
+        dev->tf->status &= ~ERR_STAT;
     } else {
-        BufLen     = &blen;
-        dev->error = 0;
+        BufLen         = &blen;
+        dev->tf->error = 0;
     }
 
     dev->packet_len  = 0;
@@ -1314,7 +1296,7 @@ mo_command(scsi_common_t *sc, uint8_t *cdb)
     if (cdb[0] != 0) {
         mo_log("MO %i: Command 0x%02X, Sense Key %02X, Asc %02X, Ascq %02X, Unit attention: %i\n",
                dev->id, cdb[0], mo_sense_key, mo_asc, mo_ascq, dev->unit_attention);
-        mo_log("MO %i: Request length: %04X\n", dev->id, dev->request_length);
+        mo_log("MO %i: Request length: %04X\n", dev->id, dev->tf->request_length);
 
         mo_log("MO %i: CDB: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\n", dev->id,
                cdb[0], cdb[1], cdb[2], cdb[3], cdb[4], cdb[5], cdb[6], cdb[7],
@@ -1335,7 +1317,7 @@ mo_command(scsi_common_t *sc, uint8_t *cdb)
                 mo_invalid_field(dev);
                 return;
             }
-            /*FALLTHROUGH*/
+            fallthrough;
         case GPCMD_SCSI_RESERVE:
         case GPCMD_SCSI_RELEASE:
         case GPCMD_TEST_UNIT_READY:
@@ -1417,6 +1399,9 @@ mo_command(scsi_common_t *sc, uint8_t *cdb)
                     dev->sector_len = (((uint32_t) cdb[6]) << 24) | (((uint32_t) cdb[7]) << 16) | (((uint32_t) cdb[8]) << 8) | ((uint32_t) cdb[9]);
                     dev->sector_pos = (((uint32_t) cdb[2]) << 24) | (((uint32_t) cdb[3]) << 16) | (((uint32_t) cdb[4]) << 8) | ((uint32_t) cdb[5]);
                     mo_log("MO %i: Length: %i, LBA: %i\n", dev->id, dev->sector_len, dev->sector_pos);
+                    break;
+
+                default:
                     break;
             }
 
@@ -1510,6 +1495,9 @@ mo_command(scsi_common_t *sc, uint8_t *cdb)
                 case GPCMD_WRITE_AND_VERIFY_12:
                     dev->sector_len = (((uint32_t) cdb[6]) << 24) | (((uint32_t) cdb[7]) << 16) | (((uint32_t) cdb[8]) << 8) | ((uint32_t) cdb[9]);
                     dev->sector_pos = (((uint32_t) cdb[2]) << 24) | (((uint32_t) cdb[3]) << 16) | (((uint32_t) cdb[4]) << 8) | ((uint32_t) cdb[5]);
+                    break;
+
+                default:
                     break;
             }
 
@@ -1636,6 +1624,9 @@ mo_command(scsi_common_t *sc, uint8_t *cdb)
                 case 3: /* Load the disk (close tray). */
                     mo_reload(dev->id);
                     break;
+
+                default:
+                    break;
             }
 
             mo_command_complete(dev);
@@ -1688,7 +1679,9 @@ mo_command(scsi_common_t *sc, uint8_t *cdb)
                 dev->buffer[1] = 0x80;                                              /*Removable*/
                 dev->buffer[2] = (dev->drv->bus_type == MO_BUS_SCSI) ? 0x02 : 0x00; /*SCSI-2 compliant*/
                 dev->buffer[3] = (dev->drv->bus_type == MO_BUS_SCSI) ? 0x02 : 0x21;
-                // dev->buffer[4] = 31;
+#if 0
+                dev->buffer[4] = 31;
+#endif
                 dev->buffer[4] = 0;
                 if (dev->drv->bus_type == MO_BUS_SCSI) {
                     dev->buffer[6] = 1;    /* 16-bit transfers supported */
@@ -1741,6 +1734,9 @@ mo_command(scsi_common_t *sc, uint8_t *cdb)
                 case GPCMD_SEEK_10:
                     pos = (cdb[2] << 24) | (cdb[3] << 16) | (cdb[4] << 8) | cdb[5];
                     break;
+
+                default:
+                    break;
             }
             mo_seek(dev, pos);
             mo_command_complete(dev);
@@ -1769,7 +1765,7 @@ mo_command(scsi_common_t *sc, uint8_t *cdb)
         case GPCMD_ERASE_10:
         case GPCMD_ERASE_12:
             /*Relative address*/
-            if ((cdb[1] & 1))
+            if (cdb[1] & 1)
                 previous_pos = dev->sector_pos;
 
             switch (cdb[0]) {
@@ -1779,10 +1775,13 @@ mo_command(scsi_common_t *sc, uint8_t *cdb)
                 case GPCMD_ERASE_12:
                     dev->sector_len = (((uint32_t) cdb[6]) << 24) | (((uint32_t) cdb[7]) << 16) | (((uint32_t) cdb[8]) << 8) | ((uint32_t) cdb[9]);
                     break;
+
+                default:
+                    break;
             }
 
             /*Erase all remaining sectors*/
-            if ((cdb[1] & 4)) {
+            if (cdb[1] & 4) {
                 /* Cannot have a sector number when erase all*/
                 if (dev->sector_len) {
                     mo_invalid_field(dev);
@@ -1800,6 +1799,9 @@ mo_command(scsi_common_t *sc, uint8_t *cdb)
                     break;
                 case GPCMD_ERASE_12:
                     dev->sector_pos = (((uint32_t) cdb[2]) << 24) | (((uint32_t) cdb[3]) << 16) | (((uint32_t) cdb[4]) << 8) | ((uint32_t) cdb[5]);
+                    break;
+
+                default:
                     break;
             }
 
@@ -1831,9 +1833,11 @@ mo_command(scsi_common_t *sc, uint8_t *cdb)
             break;
     }
 
-    /* mo_log("MO %i: Phase: %02X, request length: %i\n", dev->id, dev->phase, dev->request_length); */
+#if 0
+    mo_log("MO %i: Phase: %02X, request length: %i\n", dev->id, dev->tf->phase, dev->tf->request_length);
+#endif
 
-    if (mo_atapi_phase_to_scsi(dev) == SCSI_PHASE_STATUS)
+    if ((dev->packet_status == PHASE_COMPLETE) || (dev->packet_status == PHASE_ERROR))
         mo_buf_free(dev);
 }
 
@@ -1852,15 +1856,18 @@ mo_phase_data_out(scsi_common_t *sc)
 {
     mo_t *dev = (mo_t *) sc;
 
-    uint16_t block_desc_len, pos;
+    uint16_t block_desc_len;
+    uint16_t pos;
     uint16_t param_list_len;
 
     uint8_t error = 0;
-    uint8_t page, page_len;
+    uint8_t page;
+    uint8_t page_len;
 
-    uint32_t i = 0;
-
-    uint8_t hdr_len, val, old_val, ch;
+    uint8_t hdr_len;
+    uint8_t val;
+    uint8_t old_val;
+    uint8_t ch;
 
     int len = 0;
 
@@ -1918,7 +1925,7 @@ mo_phase_data_out(scsi_common_t *sc)
                 if (!(mo_mode_sense_page_flags & (1LL << ((uint64_t) page))))
                     error |= 1;
                 else {
-                    for (i = 0; i < page_len; i++) {
+                    for (uint8_t i = 0; i < page_len; i++) {
                         ch      = mo_mode_sense_pages_changeable.pages[page][i + 2];
                         val     = dev->buffer[pos + i];
                         old_val = dev->ms_pages_saved.pages[page][i + 2];
@@ -1949,6 +1956,9 @@ mo_phase_data_out(scsi_common_t *sc)
                 mo_invalid_field_pl(dev);
                 return 0;
             }
+            break;
+
+        default:
             break;
     }
 
@@ -2016,7 +2026,7 @@ mo_do_identify(ide_t *ide, int ide_has_dma)
 {
     char model[40];
 
-    mo_t *mo = (mo_t *) ide->sc;
+    const mo_t *mo = (mo_t *) ide->sc;
 
     memset(model, 0, 40);
 
@@ -2066,6 +2076,9 @@ mo_drive_reset(int c)
     dev->cur_lun = SCSI_LUN_USE_CDB;
 
     if (mo_drives[c].bus_type == MO_BUS_SCSI) {
+        if (!dev->tf)
+            dev->tf        = (ide_tf_t *) calloc(1, sizeof(ide_tf_t));
+
         /* SCSI MO, attach to the SCSI bus. */
         sd = &scsi_devices[scsi_bus][scsi_id];
 
@@ -2084,6 +2097,8 @@ mo_drive_reset(int c)
            that's not attached to anything. */
         if (id) {
             id->sc               = (scsi_common_t *) dev;
+            dev->tf              = id->tf;
+            IDE_ATAPI_IS_EARLY   = 0;
             id->get_max          = mo_get_max;
             id->get_timings      = mo_get_timings;
             id->identify         = mo_identify;
@@ -2104,10 +2119,10 @@ void
 mo_hard_reset(void)
 {
     mo_t   *dev;
-    int     c;
-    uint8_t scsi_id, scsi_bus;
+    uint8_t scsi_id;
+    uint8_t scsi_bus;
 
-    for (c = 0; c < MO_NUM; c++) {
+    for (uint8_t c = 0; c < MO_NUM; c++) {
         if ((mo_drives[c].bus_type == MO_BUS_ATAPI) || (mo_drives[c].bus_type == MO_BUS_SCSI)) {
             mo_log("MO hard_reset drive=%d\n", c);
 
@@ -2132,6 +2147,9 @@ mo_hard_reset(void)
 
             dev = (mo_t *) mo_drives[c].priv;
 
+            if (dev->tf == NULL)
+                continue;
+
             dev->id  = c;
             dev->drv = &mo_drives[c];
 
@@ -2154,10 +2172,10 @@ void
 mo_close(void)
 {
     mo_t   *dev;
-    int     c;
-    uint8_t scsi_id, scsi_bus;
+    uint8_t scsi_id;
+    uint8_t scsi_bus;
 
-    for (c = 0; c < MO_NUM; c++) {
+    for (uint8_t c = 0; c < MO_NUM; c++) {
         if (mo_drives[c].bus_type == MO_BUS_SCSI) {
             scsi_bus = (mo_drives[c].scsi_device_id >> 4) & 0x0f;
             scsi_id  = mo_drives[c].scsi_device_id & 0x0f;
@@ -2169,6 +2187,9 @@ mo_close(void)
 
         if (dev) {
             mo_disk_unload(dev);
+
+            if (dev->tf)
+                free(dev->tf);
 
             free(dev);
             mo_drives[c].priv = NULL;

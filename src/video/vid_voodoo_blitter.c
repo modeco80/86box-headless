@@ -152,30 +152,34 @@ void
 voodoo_v2_blit_start(voodoo_t *voodoo)
 {
     uint64_t dat64;
-    int      size_x = ABS(voodoo->bltSizeX), size_y = ABS(voodoo->bltSizeY);
+    int      size_x = ABS(voodoo->bltSizeX);
+    int      size_y = ABS(voodoo->bltSizeY);
     int      x_dir = (voodoo->bltSizeX > 0) ? 1 : -1;
     int      y_dir = (voodoo->bltSizeY > 0) ? 1 : -1;
     int      dst_x;
-    int      src_y = voodoo->bltSrcY & 0x7ff, dst_y = voodoo->bltDstY & 0x7ff;
+    int      src_y = voodoo->bltSrcY & 0x7ff;
+    int      dst_y = voodoo->bltDstY & 0x7ff;
     int      src_stride    = (voodoo->bltCommand & BLTCMD_SRC_TILED) ? ((voodoo->bltSrcXYStride & 0x3f) * 32 * 2) : (voodoo->bltSrcXYStride & 0xff8);
     int      dst_stride    = (voodoo->bltCommand & BLTCMD_DST_TILED) ? ((voodoo->bltDstXYStride & 0x3f) * 32 * 2) : (voodoo->bltDstXYStride & 0xff8);
     uint32_t src_base_addr = (voodoo->bltCommand & BLTCMD_SRC_TILED) ? ((voodoo->bltSrcBaseAddr & 0x3ff) << 12) : (voodoo->bltSrcBaseAddr & 0x3ffff8);
     uint32_t dst_base_addr = (voodoo->bltCommand & BLTCMD_DST_TILED) ? ((voodoo->bltDstBaseAddr & 0x3ff) << 12) : (voodoo->bltDstBaseAddr & 0x3ffff8);
-    int      x, y;
 
-    /*        voodooblt_log("blit_start: command=%08x srcX=%i srcY=%i dstX=%i dstY=%i sizeX=%i sizeY=%i color=%04x,%04x\n",
-                    voodoo->bltCommand, voodoo->bltSrcX, voodoo->bltSrcY, voodoo->bltDstX, voodoo->bltDstY, voodoo->bltSizeX, voodoo->bltSizeY, voodoo->bltColorFg, voodoo->bltColorBg);*/
+#if 0
+    voodooblt_log("blit_start: command=%08x srcX=%i srcY=%i dstX=%i dstY=%i sizeX=%i sizeY=%i color=%04x,%04x\n",
+                  voodoo->bltCommand, voodoo->bltSrcX, voodoo->bltSrcY, voodoo->bltDstX, voodoo->bltDstY, voodoo->bltSizeX, voodoo->bltSizeY, voodoo->bltColorFg, voodoo->bltColorBg);
+#endif
 
     voodoo_wait_for_render_thread_idle(voodoo);
 
     switch (voodoo->bltCommand & BLIT_COMMAND_MASK) {
         case BLIT_COMMAND_SCREEN_TO_SCREEN:
-            for (y = 0; y <= size_y; y++) {
-                uint16_t *src   = (uint16_t *) &voodoo->fb_mem[src_base_addr + src_y * src_stride];
-                uint16_t *dst   = (uint16_t *) &voodoo->fb_mem[dst_base_addr + dst_y * dst_stride];
-                int       src_x = voodoo->bltSrcX, dst_x = voodoo->bltDstX;
+            for (int y = 0; y <= size_y; y++) {
+                const uint16_t *src   = (uint16_t *) &voodoo->fb_mem[src_base_addr + src_y * src_stride];
+                uint16_t       *dst   = (uint16_t *) &voodoo->fb_mem[dst_base_addr + dst_y * dst_stride];
+                int             src_x = voodoo->bltSrcX;
+                int             dst_x = voodoo->bltDstX;
 
-                for (x = 0; x <= size_x; x++) {
+                for (int x = 0; x <= size_x; x++) {
                     uint16_t src_dat = src[src_x];
                     uint16_t dst_dat = dst[dst_x];
                     int      rop     = 0;
@@ -227,7 +231,7 @@ skip_pixel_blit:
             break;
 
         case BLIT_COMMAND_RECT_FILL:
-            for (y = 0; y <= size_y; y++) {
+            for (int y = 0; y <= size_y; y++) {
                 uint16_t *dst;
                 int       dst_x = voodoo->bltDstX;
 
@@ -238,7 +242,7 @@ skip_pixel_blit:
                 } else
                     dst = (uint16_t *) &voodoo->fb_mem[dst_base_addr + dst_y * dst_stride];
 
-                for (x = 0; x <= size_x; x++) {
+                for (int x = 0; x <= size_x; x++) {
                     if (voodoo->bltCommand & BLIT_CLIPPING_ENABLED) {
                         if (dst_x < voodoo->bltClipLeft || dst_x >= voodoo->bltClipRight || dst_y < voodoo->bltClipLowY || dst_y >= voodoo->bltClipHighY)
                             goto skip_pixel_fill;
@@ -261,7 +265,7 @@ skip_line_fill:
 
             dat64 = voodoo->bltColorFg | ((uint64_t) voodoo->bltColorFg << 16) | ((uint64_t) voodoo->bltColorFg << 32) | ((uint64_t) voodoo->bltColorFg << 48);
 
-            for (y = 0; y <= size_y; y++) {
+            for (int y = 0; y <= size_y; y++) {
                 uint64_t *dst;
 
                 /*This may be wrong*/
@@ -278,7 +282,7 @@ skip_line_fill:
 
                 dst = (uint64_t *) &voodoo->fb_mem[(dst_y * 512 * 8 + dst_x * 8) & voodoo->fb_mask];
 
-                for (x = 0; x <= size_x; x++)
+                for (int x = 0; x <= size_x; x++)
                     dst[x] = dat64;
 
                 dst_y++;
@@ -316,8 +320,11 @@ voodoo_v2_blit_data(voodoo_t *voodoo, uint32_t data)
     }
 
     while (src_bits && voodoo->blt.cur_x <= voodoo->blt.size_x) {
-        int      r = 0, g = 0, b = 0;
-        uint16_t src_dat = 0, dst_dat;
+        int      r       = 0;
+        int      g       = 0;
+        int      b       = 0;
+        uint16_t src_dat = 0;
+        uint16_t dst_dat;
         int      x       = (voodoo->blt.x_dir > 0) ? (voodoo->blt.dst_x + voodoo->blt.cur_x) : (voodoo->blt.dst_x - voodoo->blt.cur_x);
         int      rop     = 0;
 
@@ -337,6 +344,9 @@ voodoo_v2_blit_data(voodoo_t *voodoo, uint32_t data)
                     case BLIT_SRC_RGB_ABGR:
                     case BLIT_SRC_RGB_BGRA:
                         src_dat = ((data & 0xf800) >> 11) | (data & 0x07c0) | ((data & 0x0038) << 11);
+                        break;
+
+                    default:
                         break;
                 }
                 data >>= 16;
@@ -366,6 +376,9 @@ voodoo_v2_blit_data(voodoo_t *voodoo, uint32_t data)
                         g = (data >> 16) & 0xff;
                         b = (data >> 24) & 0xff;
                         break;
+
+                    default:
+                        break;
                 }
                 switch (voodoo->bltCommand & BLIT_SRC_FORMAT) {
                     case BLIT_SRC_24BPP:
@@ -383,8 +396,14 @@ voodoo_v2_blit_data(voodoo_t *voodoo, uint32_t data)
                         b       = dither_rb[b][voodoo->blt.dst_y & 3][x & 3];
                         src_dat = (b >> 3) | ((g & 0xfc) << 3) | ((r & 0xf8) << 8);
                         break;
+
+                    default:
+                        break;
                 }
                 src_bits = 0;
+                break;
+
+            default:
                 break;
         }
 
@@ -438,7 +457,8 @@ void
 voodoo_fastfill(voodoo_t *voodoo, voodoo_params_t *params)
 {
     int y;
-    int low_y, high_y;
+    int low_y;
+    int high_y;
 
     if (params->fbzMode & (1 << 17)) {
         int y_origin = (voodoo->type >= VOODOO_BANSHEE) ? (voodoo->y_origin_swap + 1) : voodoo->v_disp;
@@ -451,7 +471,9 @@ voodoo_fastfill(voodoo_t *voodoo, voodoo_params_t *params)
     }
 
     if (params->fbzMode & FBZ_RGB_WMASK) {
-        int      r, g, b;
+        int      r;
+        int      g;
+        int      b;
         uint16_t col;
 
         r   = ((params->color1 >> 16) >> 3) & 0x1f;
@@ -462,26 +484,23 @@ voodoo_fastfill(voodoo_t *voodoo, voodoo_params_t *params)
         if (SLI_ENABLED) {
             for (y = low_y; y < high_y; y += 2) {
                 uint16_t *cbuf = (uint16_t *) &voodoo->fb_mem[(params->draw_offset + (y >> 1) * voodoo->row_width) & voodoo->fb_mask];
-                int       x;
 
-                for (x = params->clipLeft; x < params->clipRight; x++)
+                for (int x = params->clipLeft; x < params->clipRight; x++)
                     cbuf[x] = col;
             }
         } else {
             for (y = low_y; y < high_y; y++) {
                 if (voodoo->col_tiled) {
                     uint16_t *cbuf = (uint16_t *) &voodoo->fb_mem[(params->draw_offset + (y >> 5) * voodoo->row_width + (y & 31) * 128) & voodoo->fb_mask];
-                    int       x;
 
-                    for (x = params->clipLeft; x < params->clipRight; x++) {
+                    for (int x = params->clipLeft; x < params->clipRight; x++) {
                         int x2   = (x & 63) | ((x >> 6) * 128 * 32 / 2);
                         cbuf[x2] = col;
                     }
                 } else {
                     uint16_t *cbuf = (uint16_t *) &voodoo->fb_mem[(params->draw_offset + y * voodoo->row_width) & voodoo->fb_mask];
-                    int       x;
 
-                    for (x = params->clipLeft; x < params->clipRight; x++)
+                    for (int x = params->clipLeft; x < params->clipRight; x++)
                         cbuf[x] = col;
                 }
             }
@@ -491,26 +510,23 @@ voodoo_fastfill(voodoo_t *voodoo, voodoo_params_t *params)
         if (SLI_ENABLED) {
             for (y = low_y; y < high_y; y += 2) {
                 uint16_t *abuf = (uint16_t *) &voodoo->fb_mem[(params->aux_offset + (y >> 1) * voodoo->row_width) & voodoo->fb_mask];
-                int       x;
 
-                for (x = params->clipLeft; x < params->clipRight; x++)
+                for (int x = params->clipLeft; x < params->clipRight; x++)
                     abuf[x] = params->zaColor & 0xffff;
             }
         } else {
             for (y = low_y; y < high_y; y++) {
                 if (voodoo->aux_tiled) {
                     uint16_t *abuf = (uint16_t *) &voodoo->fb_mem[(params->aux_offset + (y >> 5) * voodoo->aux_row_width + (y & 31) * 128) & voodoo->fb_mask];
-                    int       x;
 
-                    for (x = params->clipLeft; x < params->clipRight; x++) {
+                    for (int x = params->clipLeft; x < params->clipRight; x++) {
                         int x2   = (x & 63) | ((x >> 6) * 128 * 32 / 2);
                         abuf[x2] = params->zaColor & 0xffff;
                     }
                 } else {
                     uint16_t *abuf = (uint16_t *) &voodoo->fb_mem[(params->aux_offset + y * voodoo->aux_row_width) & voodoo->fb_mask];
-                    int       x;
 
-                    for (x = params->clipLeft; x < params->clipRight; x++)
+                    for (int x = params->clipLeft; x < params->clipRight; x++)
                         abuf[x] = params->zaColor & 0xffff;
                 }
             }

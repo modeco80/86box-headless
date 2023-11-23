@@ -10,13 +10,13 @@
  *
  *
  *
- * Authors: Sarah Walker, <https://pcem-emulator.co.uk/>
- *          Miran Grca, <mgrca8@gmail.com>
+ * Authors: Miran Grca, <mgrca8@gmail.com>
  *          GH Cao, <driver1998.ms@outlook.com>
+ *          Jasmine Iwanek,
  *
- *          Copyright 2008-2018 Sarah Walker.
  *          Copyright 2016-2018 Miran Grca.
  *          Copyright 2020 GH Cao.
+ *          Copyright 2021-2023 Jasmine Iwanek.
  */
 #include <windows.h>
 #include <windowsx.h>
@@ -137,7 +137,7 @@ joystick_add_axis(raw_joystick_t *rawjoy, plat_joystick_t *joy, PHIDP_VALUE_CAPS
          * Some joysticks will send -1 in LogicalMax, like Xbox Controllers
          * so we need to mask that to appropriate value (instead of 0xFFFFFFFF)
          */
-        rawjoy->axis[joy->nr_axes].max = prop->LogicalMax & ((1 << prop->BitSize) - 1);
+        rawjoy->axis[joy->nr_axes].max = prop->LogicalMax & ((1ULL << prop->BitSize) - 1);
     }
     rawjoy->axis[joy->nr_axes].min = prop->LogicalMin;
 
@@ -443,12 +443,12 @@ joystick_get_axis(int joystick_nr, int mapping)
 void
 joystick_process(void)
 {
-    int c, d;
+    int d;
 
-    if (joystick_type == 7)
+    if (joystick_type == JS_TYPE_NONE)
         return;
 
-    for (c = 0; c < joystick_get_max_joysticks(joystick_type); c++) {
+    for (int c = 0; c < joystick_get_max_joysticks(joystick_type); c++) {
         if (joystick_state[c].plat_joystick_nr) {
             int joystick_nr = joystick_state[c].plat_joystick_nr - 1;
 
@@ -458,8 +458,10 @@ joystick_process(void)
                 joystick_state[c].button[d] = plat_joystick_state[joystick_nr].b[joystick_state[c].button_mapping[d]];
 
             for (d = 0; d < joystick_get_pov_count(joystick_type); d++) {
-                int    x, y;
-                double angle, magnitude;
+                int    x;
+                int    y;
+                double angle;
+                double magnitude;
 
                 x = joystick_get_axis(joystick_nr, joystick_state[c].pov_mapping[d][0]);
                 y = joystick_get_axis(joystick_nr, joystick_state[c].pov_mapping[d][1]);

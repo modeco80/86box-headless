@@ -29,6 +29,25 @@
 #include "cpu.h"
 
 int keyboard_scan;
+
+#ifdef _WIN32
+/* Windows: F8+F12 */
+uint16_t key_prefix_1_1 = 0x042;     /* F8 */
+uint16_t key_prefix_1_2 = 0x000;     /* Invalid */
+uint16_t key_prefix_2_1 = 0x000;     /* Invalid */
+uint16_t key_prefix_2_2 = 0x000;     /* Invalid */
+uint16_t key_uncapture_1 = 0x058;    /* F12 */
+uint16_t key_uncapture_2 = 0x000;    /* Invalid */
+#else
+/* WxWidgets cannot do two regular keys.. CTRL+END */
+uint16_t key_prefix_1_1 = 0x01d;     /* Left Ctrl */
+uint16_t key_prefix_1_2 = 0x11d;     /* Right Ctrl */
+uint16_t key_prefix_2_1 = 0x000;     /* Invalid */
+uint16_t key_prefix_2_2 = 0x000;     /* Invalid */
+uint16_t key_uncapture_1 = 0x04f;    /* Numpad End */
+uint16_t key_uncapture_2 = 0x14f;    /* End */
+#endif
+
 void (*keyboard_send)(uint16_t val);
 
 static int recv_key[512]; /* keyboard input buffer */
@@ -66,6 +85,7 @@ static uint8_t
 fake_shift_needed(uint16_t scan)
 {
     switch (scan) {
+        case 0x137:    /* Yes, Print Screen requires the fake shifts. */
         case 0x147:
         case 0x148:
         case 0x149:
@@ -86,17 +106,21 @@ fake_shift_needed(uint16_t scan)
 void
 key_process(uint16_t scan, int down)
 {
-    scancode *codes = scan_table;
-    int       c;
+    const scancode *codes = scan_table;
+    int             c;
+
+    if (!codes)
+        return;
 
     if (!keyboard_scan || (keyboard_send == NULL))
         return;
 
     oldkey[scan] = down;
-    if (down && codes[scan].mk[0] == 0)
+
+    if (down && (codes[scan].mk[0] == 0))
         return;
 
-    if (!down && codes[scan].brk[0] == 0)
+    if (!down && (codes[scan].brk[0] == 0))
         return;
 
     /* TODO: The keyboard controller needs to report the AT flag to us here. */
@@ -125,9 +149,13 @@ key_process(uint16_t scan, int down)
 void
 keyboard_input(int down, uint16_t scan)
 {
+    /* Special case for E1 1D, translate it to 0100 - special case. */
+    if ((scan >> 8) == 0xe1) {
+        if ((scan & 0xff) == 0x1d)
+            scan = 0x0100;
     /* Translate E0 xx scan codes to 01xx because we use 512-byte arrays for states
        and scan code sets. */
-    if ((scan >> 8) == 0xe0) {
+    } else if ((scan >> 8) == 0xe0) {
         scan &= 0x00ff;
         scan |= 0x0100; /* extended key code */
     } else if ((scan >> 8) != 0x01)
@@ -158,6 +186,15 @@ keyboard_input(int down, uint16_t scan)
                 case 0x138: /* Right Alt */
                     shift |= 0x40;
                     break;
+                case 0x15b: /* Left Windows */
+                    shift |= 0x08;
+                    break;
+                case 0x15c: /* Right Windows */
+                    shift |= 0x80;
+                    break;
+
+                default:
+                    break;
             }
         } else {
             switch (scan & 0x1ff) {
@@ -179,6 +216,12 @@ keyboard_input(int down, uint16_t scan)
                 case 0x138: /* Right Alt */
                     shift &= ~0x40;
                     break;
+                case 0x15b: /* Left Windows */
+                    shift &= ~0x08;
+                    break;
+                case 0x15c: /* Right Windows */
+                    shift &= ~0x80;
+                    break;
                 case 0x03a: /* Caps Lock */
                     caps_lock ^= 1;
                     break;
@@ -188,13 +231,18 @@ keyboard_input(int down, uint16_t scan)
                 case 0x046:
                     scroll_lock ^= 1;
                     break;
+
+                default:
+                    break;
             }
         }
     }
 
     /* NOTE: Shouldn't this be some sort of bit shift? An array of 8 unsigned 64-bit integers
              should be enough. */
-    /* recv_key[scan >> 6] |= ((uint64_t) down << ((uint64_t) scan & 0x3fLL)); */
+#if 0
+    recv_key[scan >> 6] |= ((uint64_t) down << ((uint64_t) scan & 0x3fLL));
+#endif
 
     /* pclog("Received scan code: %03X (%s)\n", scan & 0x1ff, down ? "down" : "up"); */
     recv_key[scan & 0x1ff] = down;
@@ -205,7 +253,7 @@ keyboard_input(int down, uint16_t scan)
 static uint8_t
 keyboard_do_break(uint16_t scan)
 {
-    scancode *codes = scan_table;
+    const scancode *codes = scan_table;
 
     /* TODO: The keyboard controller needs to report the AT flag to us here. */
     if (is286 && ((keyboard_mode & 3) == 3)) {
@@ -249,7 +297,7 @@ keyboard_get_states(uint8_t *cl, uint8_t *nl, uint8_t *sl)
 void
 keyboard_set_states(uint8_t cl, uint8_t nl, uint8_t sl)
 {
-    scancode *codes = scan_table;
+    const scancode *codes = scan_table;
 
     int i;
 
@@ -297,20 +345,39 @@ keyboard_recv(uint16_t key)
 
 /* Do we have Control-Alt-PgDn in the keyboard buffer? */
 int
-keyboard_isfsexit(void)
+keyboard_isfsenter(void)
 {
-    return ((recv_key[0x01D] || recv_key[0x11D]) && (recv_key[0x038] || recv_key[0x138]) && (recv_key[0x051] || recv_key[0x151]));
+    return ((recv_key[0x01d] || recv_key[0x11d]) && (recv_key[0x038] || recv_key[0x138]) && (recv_key[0x049] || recv_key[0x149]));
 }
 
-/* Do we have F8-F12 in the keyboard buffer? */
+int
+keyboard_isfsenter_up(void)
+{
+    return (!recv_key[0x01d] && !recv_key[0x11d] && !recv_key[0x038] && !recv_key[0x138] && !recv_key[0x049] && !recv_key[0x149]);
+}
+
+/* Do we have Control-Alt-PgDn in the keyboard buffer? */
+int
+keyboard_isfsexit(void)
+{
+    return ((recv_key[0x01d] || recv_key[0x11d]) && (recv_key[0x038] || recv_key[0x138]) && (recv_key[0x051] || recv_key[0x151]));
+}
+
+int
+keyboard_isfsexit_up(void)
+{
+    return (!recv_key[0x01d] && !recv_key[0x11d] && !recv_key[0x038] && !recv_key[0x138] && !recv_key[0x051] && !recv_key[0x151]);
+}
+
+/* Do we have the mouse uncapture combination in the keyboard buffer? */
 int
 keyboard_ismsexit(void)
 {
-#ifdef _WIN32
-    /* Windows: F8+F12 */
-    return (recv_key[0x042] && recv_key[0x058]);
-#else
-    /* WxWidgets cannot do two regular keys.. CTRL+END */
-    return ((recv_key[0x01D] || recv_key[0x11D]) && (recv_key[0x04F] || recv_key[0x14F]));
-#endif
+    if ((key_prefix_2_1 != 0x000) || (key_prefix_2_2 != 0x000))
+        return ((recv_key[key_prefix_1_1] || recv_key[key_prefix_1_2]) &&
+                (recv_key[key_prefix_2_1] || recv_key[key_prefix_2_2]) &&
+                (recv_key[key_uncapture_1] || recv_key[key_uncapture_2]));
+    else
+        return ((recv_key[key_prefix_1_1] || recv_key[key_prefix_1_2]) &&
+                (recv_key[key_uncapture_1] || recv_key[key_uncapture_2]));
 }

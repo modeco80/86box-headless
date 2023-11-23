@@ -29,7 +29,9 @@
 
 MainWindow *main_window = nullptr;
 
-static QString sb_text, sb_buguitext, sb_mt32lcdtext;
+static QString sb_text;
+static QString sb_buguitext;
+static QString sb_mt32lcdtext;
 
 extern "C" {
 
@@ -74,16 +76,16 @@ ui_window_title(wchar_t *str)
     return str;
 }
 
+void
+ui_hard_reset_completed()
+{
+    emit main_window->hardResetCompleted();
+}
+
 extern "C" void
 qt_blit(int x, int y, int w, int h, int monitor_index)
 {
     main_window->blitToWidget(x, y, w, h, monitor_index);
-}
-
-void
-mouse_poll()
-{
-    main_window->pollMouse();
 }
 
 extern "C" int vid_resize;
@@ -215,7 +217,6 @@ ui_sb_bugui(char *str)
 {
     sb_buguitext = str;
     ui_sb_update_text();
-    ;
 }
 
 void

@@ -32,13 +32,13 @@ public:
     void  blitToWidget(int x, int y, int w, int h, int monitor_index);
     QSize getRenderWidgetSize();
     void  setSendKeyboardInput(bool enabled);
+    void  checkFullscreenHotkey();
 
     std::array<std::unique_ptr<RendererStack>, 8> renderers;
 signals:
     void paint(const QImage &image);
     void resizeContents(int w, int h);
     void resizeContentsMonitor(int w, int h, int monitor_index);
-    void pollMouse();
     void statusBarMessage(const QString &msg);
     void updateStatusBarPanes();
     void updateStatusBarActivity(int tag, bool active);
@@ -50,6 +50,7 @@ signals:
     void destroyRendererMonitor(int monitor_index);
     void initRendererMonitorForNonQtThread(int monitor_index);
     void destroyRendererMonitorForNonQtThread(int monitor_index);
+    void hardResetCompleted();
 
     void setTitle(const QString &title);
     void setFullscreen(bool state);
@@ -68,6 +69,7 @@ private slots:
     void on_actionFullscreen_triggered();
     void on_actionSettings_triggered();
     void on_actionExit_triggered();
+    void on_actionAuto_pause_triggered();
     void on_actionPause_triggered();
     void on_actionCtrl_Alt_Del_triggered();
     void on_actionCtrl_Alt_Esc_triggered();
@@ -89,6 +91,7 @@ private slots:
     void on_actionLinear_triggered();
     void on_actionNearest_triggered();
     void on_actionFullScreen_int_triggered();
+    void on_actionFullScreen_int43_triggered();
     void on_actionFullScreen_keepRatio_triggered();
     void on_actionFullScreen_43_triggered();
     void on_actionFullScreen_stretch_triggered();
@@ -135,7 +138,13 @@ protected:
     void changeEvent(QEvent *event) override;
 
 private slots:
+    void on_actionPen_triggered();
+
+private slots:
+    void on_actionCursor_Puck_triggered();
+
     void on_actionACPI_Shutdown_triggered();
+    void on_actionShow_status_icons_in_fullscreen_triggered();
 
 private slots:
     void on_actionShow_non_primary_monitors_triggered();
@@ -149,6 +158,7 @@ private:
     std::unique_ptr<MachineStatus> status;
     std::shared_ptr<MediaMenu>     mm;
 
+    void     processKeyboardInput(bool down, uint32_t keycode);
 #ifdef Q_OS_MACOS
     uint32_t last_modifiers = 0;
     void     processMacKeyboardInput(bool down, const QKeyEvent *event);
@@ -159,6 +169,10 @@ private:
     bool shownonce           = false;
     bool resizableonce       = false;
     bool vnc_enabled         = false;
+
+    /* Full screen ON and OFF signals */
+    bool fs_on_signal        = false;
+    bool fs_off_signal       = false;
 
     friend class SpecifyDimensions;
     friend class ProgSettings;

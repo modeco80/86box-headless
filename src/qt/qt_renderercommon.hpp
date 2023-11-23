@@ -38,10 +38,14 @@ public:
     virtual bool hasBlitFunc() { return false; }
     virtual void blit(int x, int y, int w, int h) { }
 
-protected:
-    bool eventDelegate(QEvent *event, bool &result);
+    int      r_monitor_index = 0;
 
-    QRect    source { 0, 0, 0, 0 }, destination;
+protected:
+    bool     eventDelegate(QEvent *event, bool &result);
+    void      drawStatusBarIcons(QPainter* painter);
+
+    QRect    source { 0, 0, 0, 0 };
+    QRect    destination;
     QWidget *parentWidget { nullptr };
 
     std::vector<std::atomic_flag> buf_usage;

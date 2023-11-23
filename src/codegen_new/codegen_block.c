@@ -1,13 +1,17 @@
+#include <inttypes.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <86box/86box.h>
 #include "cpu.h"
 #include <86box/mem.h>
+#include <86box/plat_unused.h>
 
 #include "x86.h"
 #include "x86_flags.h"
 #include "x86_ops.h"
+#include "x86seg_common.h"
+#include "x86seg.h"
 #include "x87.h"
 
 #include "386_common.h"
@@ -21,7 +25,8 @@
 
 uint8_t *block_write_data = NULL;
 
-int      codegen_flat_ds, codegen_flat_ss;
+int      codegen_flat_ds;
+int      codegen_flat_ss;
 int      mmx_ebx_ecx_loaded;
 int      codegen_flags_changed = 0;
 int      codegen_fpu_entered   = 0;
@@ -61,7 +66,8 @@ static void     delete_dirty_block(codeblock_t *block);
 
   The size of this list is limited to DIRTY_LIST_MAX_SIZE blocks. When this is
   exceeded the oldest entry will be moved to the free list.*/
-static uint16_t block_dirty_list_head, block_dirty_list_tail;
+static uint16_t block_dirty_list_head;
+static uint16_t block_dirty_list_tail;
 static int      dirty_list_size = 0;
 #define DIRTY_LIST_MAX_SIZE 64
 
@@ -210,45 +216,16 @@ block_free_list_get(void)
 void
 codegen_init(void)
 {
-    int c;
-
     codegen_allocator_init();
 
     codegen_backend_init();
     block_free_list = 0;
-    for (c = 0; c < BLOCK_SIZE; c++)
+    for (uint32_t c = 0; c < BLOCK_SIZE; c++)
         block_free_list_add(&codeblock[c]);
     block_dirty_list_head = block_dirty_list_tail = 0;
     dirty_list_size                               = 0;
 #ifdef DEBUG_EXTRA
     memset(instr_counts, 0, sizeof(instr_counts));
-#endif
-}
-
-void
-codegen_close(void)
-{
-#ifdef DEBUG_EXTRA
-    pclog("Instruction counts :\n");
-    while (1) {
-        int      c;
-        uint32_t highest_num = 0, highest_idx = 0;
-
-        for (c = 0; c < 256 * 256; c++) {
-            if (instr_counts[c] > highest_num) {
-                highest_num = instr_counts[c];
-                highest_idx = c;
-            }
-        }
-        if (!highest_num)
-            break;
-
-        instr_counts[highest_idx] = 0;
-        if (highest_idx > 256)
-            pclog(" %02x %02x = %u\n", highest_idx >> 8, highest_idx & 0xff, highest_num);
-        else
-            pclog("    %02x = %u\n", highest_idx & 0xff, highest_num);
-    }
 #endif
 }
 
@@ -281,20 +258,24 @@ codegen_reset(void)
 void
 dump_block(void)
 {
-    /*        codeblock_t *block = pages[0x119000 >> 12].block;
+#if 0
+    codeblock_t *block = pages[0x119000 >> 12].block;
 
-            pclog("dump_block:\n");
-            while (block)
-            {
-                    uint32_t start_pc = (block->pc & 0xffc) | (block->phys & ~0xfff);
-                    uint32_t end_pc = (block->endpc & 0xffc) | (block->phys & ~0xfff);
-                    pclog(" %p : %08x-%08x  %08x-%08x %p %p\n", (void *)block, start_pc, end_pc,  block->pc, block->endpc, (void *)block->prev, (void *)block->next);
-                    if (!block->pc)
-                            fatal("Dead PC=0\n");
+    pclog("dump_block:\n");
+    while (block) {
+        uint32_t start_pc = (block->pc & 0xffc) | (block->phys & ~0xfff);
+        uint32_t end_pc = (block->endpc & 0xffc) | (block->phys & ~0xfff);
 
-                    block = block->next;
-            }
-            pclog("dump_block done\n");*/
+        pclog(" %p : %08x-%08x  %08x-%08x %p %p\n", (void *)block, start_pc, end_pc,  block->pc, block->endpc, (void *)block->prev, (void *)block->next);
+
+        if (!block->pc)
+            fatal("Dead PC=0\n");
+
+        block = block->next;
+    }
+
+    pclog("dump_block done\n");*/
+#endif
 }
 
 static void
@@ -305,7 +286,7 @@ add_to_block_list(codeblock_t *block)
 
 #ifndef RELEASE_BUILD
     if (!block->page_mask)
-        fatal("add_to_block_list - mask = 0 %llx %llx\n", block->page_mask, block->page_mask2);
+        fatal("add_to_block_list - mask = 0 %" PRIx64 " %" PRIx64 "\n", block->page_mask, block->page_mask2);
 #endif
 
     if (block_prev_nr) {
@@ -341,7 +322,7 @@ add_to_block_list(codeblock_t *block)
 }
 
 static void
-remove_from_block_list(codeblock_t *block, uint32_t pc)
+remove_from_block_list(codeblock_t *block, UNUSED(uint32_t pc))
 {
     if (!block->page_mask)
         return;
@@ -468,11 +449,10 @@ codegen_delete_random_block(int required_mem_block)
 }
 
 void
-codegen_check_flush(page_t *page, uint64_t mask, uint32_t phys_addr)
+codegen_check_flush(page_t *page, UNUSED(uint64_t mask), UNUSED(uint32_t phys_addr))
 {
     uint16_t block_nr               = page->block;
     int      remove_from_evict_list = 0;
-    int      c;
 
     while (block_nr) {
         codeblock_t *block      = &codeblock[block_nr];
@@ -509,7 +489,7 @@ codegen_check_flush(page_t *page, uint64_t mask, uint32_t phys_addr)
     page->code_present_mask &= ~page->dirty_mask;
     page->dirty_mask = 0;
 
-    for (c = 0; c < 64; c++) {
+    for (uint8_t c = 0; c < 64; c++) {
         if (page->byte_code_present_mask[c] & page->byte_dirty_mask[c])
             remove_from_evict_list = 0;
         page->byte_code_present_mask[c] &= ~page->byte_dirty_mask[c];

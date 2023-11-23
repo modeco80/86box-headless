@@ -28,6 +28,8 @@
 #include <QLibraryInfo>
 #include <QString>
 #include <QFont>
+#include <QDialog>
+#include <QMessageBox>
 
 #ifdef QT_STATIC
 /* Static builds need plugin imports */
@@ -43,7 +45,7 @@ Q_IMPORT_PLUGIN(QWindowsVistaStylePlugin)
 #    include "qt_winrawinputfilter.hpp"
 #    include "qt_winmanagerfilter.hpp"
 #    include <86box/win.h>
-#    include <Shobjidl.h>
+#    include <shobjidl.h>
 #endif
 
 extern "C" {
@@ -86,8 +88,10 @@ void qt_set_sequence_auto_mnemonic(bool b);
 void
 main_thread_fn()
 {
-    uint64_t old_time, new_time;
-    int      drawits, frames;
+    uint64_t old_time;
+    uint64_t new_time;
+    int      drawits;
+    int      frames;
 
     QThread::currentThread()->setPriority(QThread::HighestPriority);
     framecountx = 0;
@@ -133,12 +137,18 @@ main_thread_fn()
             }
         } else {
             /* Just so we dont overload the host OS. */
+            if (dopause)
+                ack_pause();
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
 
     is_quit = 1;
-    QTimer::singleShot(0, QApplication::instance(), []() { QApplication::instance()->quit(); });
+    if (gfxcard[1]) {
+        ui_deinit_monitor(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+    QTimer::singleShot(0, QApplication::instance(), []() { QApplication::processEvents(); QApplication::instance()->quit(); });
 }
 
 static std::thread *main_thread;
@@ -198,6 +208,18 @@ main(int argc, char *argv[])
         return 0;
     }
 
+    /* Warn the user about unsupported configs */
+    if (cpu_override) {
+        QMessageBox warningbox(QMessageBox::Icon::Warning, QObject::tr("You are loading an unsupported configuration"),
+                               QObject::tr("CPU type filtering based on selected machine is disabled for this emulated machine.\n\nThis makes it possible to choose a CPU that is otherwise incompatible with the selected machine. However, you may run into incompatibilities with the machine BIOS or other software.\n\nEnabling this setting is not officially supported and any bug reports filed may be closed as invalid."),
+                               QMessageBox::NoButton);
+        warningbox.addButton(QObject::tr("Continue"), QMessageBox::AcceptRole);
+        warningbox.addButton(QObject::tr("Exit"), QMessageBox::RejectRole);
+        warningbox.exec();
+        if (warningbox.result() == QDialog::Accepted)
+              return 0;
+    }
+
 #ifdef DISCORD
     discord_load();
 #endif
@@ -250,8 +272,6 @@ main(int argc, char *argv[])
     auto rawInputFilter = WindowsRawInputFilter::Register(main_window);
     if (rawInputFilter) {
         app.installNativeEventFilter(rawInputFilter.get());
-        QObject::disconnect(main_window, &MainWindow::pollMouse, 0, 0);
-        QObject::connect(main_window, &MainWindow::pollMouse, (WindowsRawInputFilter *) rawInputFilter.get(), &WindowsRawInputFilter::mousePoll, Qt::DirectConnection);
         main_window->setSendKeyboardInput(false);
     }
 #endif
@@ -270,6 +290,7 @@ main(int argc, char *argv[])
         main_window->installEventFilter(&socket);
         socket.connectToServer(qgetenv("86BOX_MANAGER_SOCKET"));
     }
+
     // pc_reset_hard_init();
 
     /* Set the PAUSE mode depending on the renderer. */

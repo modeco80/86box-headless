@@ -27,7 +27,8 @@ rebuild_axis_button_selections(HWND hdlg)
     int  id = IDC_CONFIG_BASE + 2;
     HWND h;
     int  joystick;
-    int  c, d;
+    int  c;
+    int  d;
     char s[269];
 
     h        = GetDlgItem(hdlg, IDC_CONFIG_BASE);
@@ -149,7 +150,7 @@ static LRESULT CALLBACK
 #else
 static BOOL CALLBACK
 #endif
-joystickconfig_dlgproc(HWND hdlg, UINT message, WPARAM wParam, LPARAM lParam)
+joystickconfig_dlgproc(HWND hdlg, UINT message, WPARAM wParam, UNUSED(LPARAM lParam))
 {
     HWND h;
     int  c;

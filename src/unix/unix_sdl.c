@@ -23,18 +23,27 @@
 #define RENDERER_OPENGL      4
 
 typedef struct sdl_blit_params {
-    int x, y, w, h;
+    int x;
+    int y;
+    int w;
+    int h;
 } sdl_blit_params;
 extern sdl_blit_params params;
 extern int             blitreq;
 
-SDL_Window         *sdl_win    = NULL;
-SDL_Renderer       *sdl_render = NULL;
-static SDL_Texture *sdl_tex    = NULL;
-int                 sdl_w = SCREEN_RES_X, sdl_h = SCREEN_RES_Y;
-static int          sdl_fs, sdl_flags           = -1;
-static int          cur_w, cur_h;
-static int          cur_wx = 0, cur_wy = 0, cur_ww = 0, cur_wh = 0;
+SDL_Window         *sdl_win     = NULL;
+SDL_Renderer       *sdl_render  = NULL;
+static SDL_Texture *sdl_tex     = NULL;
+int                 sdl_w       = SCREEN_RES_X;
+int                 sdl_h       = SCREEN_RES_Y;
+static int          sdl_fs;
+static int          sdl_flags   = -1;
+static int          cur_w;
+static int          cur_h;
+static int          cur_wx      = 0;
+static int          cur_wy      = 0;
+static int          cur_ww      = 0;
+static int          cur_wh      = 0;
 static volatile int sdl_enabled = 1;
 static SDL_mutex   *sdl_mutex   = NULL;
 int                 mouse_capture;
@@ -42,9 +51,7 @@ int                 title_set         = 0;
 int                 resize_pending    = 0;
 int                 resize_w          = 0;
 int                 resize_h          = 0;
-double              mouse_sensitivity = 1.0;                  /* Unused. */
-double              mouse_x_error = 0.0, mouse_y_error = 0.0; /* Unused. */
-static uint8_t      interpixels[17842176];
+static void        *pixeldata;
 
 extern void RenderImGui(void);
 static void
@@ -66,8 +73,18 @@ void sdl_reinit_texture(void);
 static void
 sdl_stretch(int *w, int *h, int *x, int *y)
 {
-    double hw, gw, hh, gh, dx, dy, dw, dh, gsr, hsr;
-    int    real_sdl_w, real_sdl_h;
+    double hw;
+    double gw;
+    double hh;
+    double gh;
+    double dx;
+    double dy;
+    double dw;
+    double dh;
+    double gsr;
+    double hsr;
+    int    real_sdl_w;
+    int    real_sdl_h;
 
     SDL_GL_GetDrawableSize(sdl_win, &real_sdl_w, &real_sdl_h);
 
@@ -133,11 +150,15 @@ sdl_blit_shim(int x, int y, int w, int h, int monitor_index)
     params.y = y;
     params.w = w;
     params.h = h;
+
     if (!(!sdl_enabled || (x < 0) || (y < 0) || (w <= 0) || (h <= 0) || (w > 2048) || (h > 2048) || (buffer32 == NULL) || (sdl_render == NULL) || (sdl_tex == NULL)) || (monitor_index >= 1))
-        video_copy(interpixels, &(buffer32->line[y][x]), h * 2048 * sizeof(uint32_t));
-    if (screenshots)
-        video_screenshot(interpixels, 0, 0, 2048);
+        for (int row = 0; row < h; ++row)
+            video_copy(&(((uint8_t *) pixeldata)[row * 2048 * sizeof(uint32_t)]), &(buffer32->line[y + row][x]), w * sizeof(uint32_t));
+
+    if (monitors[monitor_index].mon_screenshots)
+        video_screenshot((uint32_t *) pixeldata, 0, 0, 2048);
     blitreq = 1;
+
     video_blit_complete_monitor(monitor_index);
 }
 
@@ -147,7 +168,10 @@ void
 sdl_real_blit(SDL_Rect *r_src)
 {
     SDL_Rect r_dst;
-    int      ret, winx, winy;
+    int      ret;
+    int      winx;
+    int      winy;
+
     SDL_GL_GetDrawableSize(sdl_win, &winx, &winy);
     SDL_RenderClear(sdl_render);
 
@@ -194,7 +218,7 @@ sdl_blit(int x, int y, int w, int h)
     r_src.y = y;
     r_src.w = w;
     r_src.h = h;
-    SDL_UpdateTexture(sdl_tex, &r_src, interpixels, 2048 * 4);
+    SDL_UpdateTexture(sdl_tex, &r_src, pixeldata, 2048 * 4);
     blitreq = 0;
 
     sdl_real_blit(&r_src);
@@ -251,8 +275,6 @@ sdl_close(void)
     sdl_flags = -1;
 }
 
-static int old_capture = 0;
-
 void
 sdl_enable(int enable)
 {
@@ -273,10 +295,9 @@ sdl_enable(int enable)
 static void
 sdl_select_best_hw_driver(void)
 {
-    int              i;
     SDL_RendererInfo renderInfo;
 
-    for (i = 0; i < SDL_GetNumRenderDrivers(); ++i) {
+    for (int i = 0; i < SDL_GetNumRenderDrivers(); ++i) {
         SDL_GetRenderDriverInfo(i, &renderInfo);
         if (renderInfo.flags & SDL_RENDERER_ACCELERATED) {
             SDL_SetHint(SDL_HINT_RENDER_DRIVER, renderInfo.name);
@@ -321,7 +342,10 @@ sdl_set_fs(int fs)
 void
 sdl_resize(int x, int y)
 {
-    int ww = 0, wh = 0, wx = 0, wy = 0;
+    int ww = 0;
+    int wh = 0;
+    int wx = 0;
+    int wy = 0;
 
     if (video_fullscreen & 2)
         return;
@@ -371,7 +395,6 @@ plat_vidapi(char *api)
 static int
 sdl_init_common(int flags)
 {
-    wchar_t     temp[128];
     SDL_version ver;
 
     /* Get and log the version of the DLL we are using. */
@@ -436,7 +459,7 @@ sdl_initho(void)
 int
 sdl_pause(void)
 {
-    return (0);
+    return 0;
 }
 
 void
@@ -505,10 +528,13 @@ ui_window_title(wchar_t *str)
 void
 ui_init_monitor(int monitor_index)
 {
+    /* No-op. */
 }
+
 void
 ui_deinit_monitor(int monitor_index)
 {
+    /* No-op. */
 }
 
 void

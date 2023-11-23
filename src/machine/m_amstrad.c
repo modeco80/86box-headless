@@ -74,6 +74,7 @@
 #include <86box/vid_mda.h>
 #include <86box/machine.h>
 #include <86box/m_amstrad.h>
+#include <86box/plat_unused.h>
 
 #define STAT_PARITY   0x80
 #define STAT_RTIMEOUT 0x40
@@ -84,60 +85,64 @@
 #define STAT_IFULL    0x02
 #define STAT_OFULL    0x01
 
-typedef struct {
-    rom_t   bios_rom;    /* 1640 */
-    cga_t   cga;         /* 1640/200 */
-    mda_t   mda;         /* 1512/200/PPC512/640*/
-    ega_t   ega;         /* 1640 */
-    uint8_t emulation;   /* Which display are we emulating? */
-    uint8_t dipswitches; /* DIP switches 1-3 */
-    uint8_t crtc_index;  /* CRTC index readback
-                          * Bit 7: CGA control port written
-                          * Bit 6: Operation control port written
-                          * Bit 5: CRTC register written
-                          * Bits 0-4: Last CRTC register selected */
-    uint8_t operation_ctrl;
-    uint8_t reg_3df, type;
-    uint8_t crtc[32];
-    int     crtcreg;
-    int     cga_enabled; /* 1640 */
-    uint8_t cgacol,
-        cgamode,
-        stat;
-    uint8_t plane_write, /* 1512/200 */
-        plane_read,      /* 1512/200 */
-        border,          /* 1512/200 */
-        invert;          /* 512/640 */
-    int fontbase;        /* 1512/200 */
-    int linepos,
-        displine;
-    int sc, vc;
-    int cgadispon;
-    int con, coff,
-        cursoron,
-        cgablink;
-    int      vsynctime;
-    int      fullchange;
-    int      vadj;
-    uint16_t ma, maback;
-    int      dispon;
-    int      blink;
-    uint64_t dispontime, /* 1512/1640 */
-        dispofftime;     /* 1512/1640 */
-    pc_timer_t timer;    /* 1512/1640 */
-    int        firstline,
-        lastline;
-    uint8_t *vram;
-    void    *ams;
+typedef struct amsvid_t {
+    rom_t      bios_rom;    /* 1640 */
+    cga_t      cga;         /* 1640/200 */
+    mda_t      mda;         /* 1512/200/PPC512/640*/
+    ega_t      ega;         /* 1640 */
+    uint8_t    emulation;   /* Which display are we emulating? */
+    uint8_t    dipswitches; /* DIP switches 1-3 */
+    uint8_t    crtc_index;  /* CRTC index readback
+                             * Bit 7: CGA control port written
+                             * Bit 6: Operation control port written
+                             * Bit 5: CRTC register written
+                             * Bits 0-4: Last CRTC register selected */
+    uint8_t    operation_ctrl;
+    uint8_t    reg_3df;
+    uint8_t    type;
+    uint8_t    crtc[32];
+    int        crtcreg;
+    int        cga_enabled; /* 1640 */
+    uint8_t    cgacol;
+    uint8_t    cgamode;
+    uint8_t    stat;
+    uint8_t    plane_write; /* 1512/200 */
+    uint8_t    plane_read;  /* 1512/200 */
+    uint8_t    border;      /* 1512/200 */
+    uint8_t    invert;      /* 512/640 */
+    int        fontbase;    /* 1512/200 */
+    int        linepos;
+    int        displine;
+    int        sc;
+    int        vc;
+    int        cgadispon;
+    int        con;
+    int        coff;
+    int        cursoron;
+    int        cgablink;
+    int        vsynctime;
+    int        fullchange;
+    int        vadj;
+    uint16_t   ma;
+    uint16_t   maback;
+    int        dispon;
+    int        blink;
+    uint64_t   dispontime;  /* 1512/1640 */
+    uint64_t   dispofftime; /* 1512/1640 */
+    pc_timer_t timer;       /* 1512/1640 */
+    int        firstline;
+    int        lastline;
+    uint8_t   *vram;
+    void      *ams;
 } amsvid_t;
 
-typedef struct {
+typedef struct amstrad_t {
     /* Machine stuff. */
     uint8_t dead;
-    uint8_t stat1,
-        stat2;
-    uint8_t type,
-        language;
+    uint8_t stat1;
+    uint8_t stat2;
+    uint8_t type;
+    uint8_t language;
 
     /* Keyboard stuff. */
     int8_t     wantirq;
@@ -147,8 +152,6 @@ typedef struct {
     pc_timer_t send_delay_timer;
 
     /* Mouse stuff. */
-    uint8_t mousex,
-        mousey;
     int oldb;
 
     /* Video stuff. */
@@ -159,8 +162,8 @@ typedef struct {
 uint32_t amstrad_latch;
 
 static uint8_t key_queue[16];
-static int     key_queue_start = 0,
-           key_queue_end       = 0;
+static int     key_queue_start = 0;
+static int     key_queue_end   = 0;
 static uint8_t crtc_mask[32]   = {
     0xff, 0xff, 0xff, 0xff, 0x7f, 0x1f, 0x7f, 0x7f,
     0xf3, 0x1f, 0x7f, 0x1f, 0x3f, 0xff, 0x3f, 0xff,
@@ -202,7 +205,9 @@ amstrad_log(const char *fmt, ...)
 static void
 recalc_timings_1512(amsvid_t *vid)
 {
-    double _dispontime, _dispofftime, disptime;
+    double _dispontime;
+    double _dispofftime;
+    double disptime;
 
     disptime     = /*128*/ 114; /*Fixed on PC1512*/
     _dispontime  = 80;
@@ -261,14 +266,17 @@ vid_out_1512(uint16_t addr, uint8_t val, void *priv)
         case 0x03df:
             vid->border = val;
             return;
+
+        default:
+            return;
     }
 }
 
 static uint8_t
 vid_in_1512(uint16_t addr, void *priv)
 {
-    amsvid_t *vid = (amsvid_t *) priv;
-    uint8_t   ret = 0xff;
+    const amsvid_t *vid = (amsvid_t *) priv;
+    uint8_t         ret = 0xff;
 
     if ((addr >= 0x3d0) && (addr <= 0x3d7))
         addr = (addr & 0xff9) | 0x004;
@@ -285,9 +293,12 @@ vid_in_1512(uint16_t addr, void *priv)
         case 0x03da:
             ret = vid->stat;
             break;
+
+        default:
+            break;
     }
 
-    return (ret);
+    return ret;
 }
 
 static void
@@ -314,7 +325,7 @@ vid_write_1512(uint32_t addr, uint8_t val, void *priv)
 static uint8_t
 vid_read_1512(uint32_t addr, void *priv)
 {
-    amsvid_t *vid = (amsvid_t *) priv;
+    const amsvid_t *vid = (amsvid_t *) priv;
 
     cycles -= 12;
     addr &= 0x3fff;
@@ -331,9 +342,16 @@ vid_poll_1512(void *priv)
     amsvid_t *vid = (amsvid_t *) priv;
     uint16_t  ca  = (vid->crtc[15] | (vid->crtc[14] << 8)) & 0x3fff;
     int       drawcursor;
-    int       x, c, xs_temp, ys_temp;
-    uint8_t   chr, attr;
-    uint16_t  dat, dat2, dat3, dat4;
+    int       x;
+    int       c;
+    int       xs_temp;
+    int       ys_temp;
+    uint8_t   chr;
+    uint8_t   attr;
+    uint16_t  dat;
+    uint16_t  dat2;
+    uint16_t  dat3;
+    uint16_t  dat4;
     int       cols[4];
     int       col;
     int       oldsc;
@@ -351,25 +369,25 @@ vid_poll_1512(void *priv)
             vid->lastline = vid->displine;
             for (c = 0; c < 8; c++) {
                 if ((vid->cgamode & 0x12) == 0x12) {
-                    buffer32->line[(vid->displine << 1)][c] = buffer32->line[(vid->displine << 1) + 1][c] = (vid->border & 15) + 16;
+                    buffer32->line[vid->displine << 1][c] = buffer32->line[(vid->displine << 1) + 1][c] = (vid->border & 15) + 16;
                     if (vid->cgamode & 1) {
-                        buffer32->line[(vid->displine << 1)][c + (vid->crtc[1] << 3) + 8] = buffer32->line[(vid->displine << 1) + 1][c + (vid->crtc[1] << 3) + 8] = 0;
+                        buffer32->line[vid->displine << 1][c + (vid->crtc[1] << 3) + 8] = buffer32->line[(vid->displine << 1) + 1][c + (vid->crtc[1] << 3) + 8] = 0;
                     } else {
-                        buffer32->line[(vid->displine << 1)][c + (vid->crtc[1] << 4) + 8] = buffer32->line[(vid->displine << 1) + 1][c + (vid->crtc[1] << 4) + 8] = 0;
+                        buffer32->line[vid->displine << 1][c + (vid->crtc[1] << 4) + 8] = buffer32->line[(vid->displine << 1) + 1][c + (vid->crtc[1] << 4) + 8] = 0;
                     }
                 } else {
-                    buffer32->line[(vid->displine << 1)][c] = buffer32->line[(vid->displine << 1) + 1][c] = (vid->cgacol & 15) + 16;
+                    buffer32->line[vid->displine << 1][c] = buffer32->line[(vid->displine << 1) + 1][c] = (vid->cgacol & 15) + 16;
                     if (vid->cgamode & 1) {
-                        buffer32->line[(vid->displine << 1)][c + (vid->crtc[1] << 3) + 8] = buffer32->line[(vid->displine << 1) + 1][c + (vid->crtc[1] << 3) + 8] = (vid->cgacol & 15) + 16;
+                        buffer32->line[vid->displine << 1][c + (vid->crtc[1] << 3) + 8] = buffer32->line[(vid->displine << 1) + 1][c + (vid->crtc[1] << 3) + 8] = (vid->cgacol & 15) + 16;
                     } else {
-                        buffer32->line[(vid->displine << 1)][c + (vid->crtc[1] << 4) + 8] = buffer32->line[(vid->displine << 1) + 1][c + (vid->crtc[1] << 4) + 8] = (vid->cgacol & 15) + 16;
+                        buffer32->line[vid->displine << 1][c + (vid->crtc[1] << 4) + 8] = buffer32->line[(vid->displine << 1) + 1][c + (vid->crtc[1] << 4) + 8] = (vid->cgacol & 15) + 16;
                     }
                 }
             }
             if (vid->cgamode & 1) {
                 for (x = 0; x < 80; x++) {
-                    chr        = vid->vram[((vid->ma << 1) & 0x3fff)];
-                    attr       = vid->vram[(((vid->ma << 1) + 1) & 0x3fff)];
+                    chr        = vid->vram[(vid->ma << 1) & 0x3fff];
+                    attr       = vid->vram[((vid->ma << 1) + 1) & 0x3fff];
                     drawcursor = ((vid->ma == ca) && vid->con && vid->cursoron);
                     if (vid->cgamode & 0x20) {
                         cols[1] = (attr & 15) + 16;
@@ -382,19 +400,19 @@ vid_poll_1512(void *priv)
                     }
                     if (drawcursor) {
                         for (c = 0; c < 8; c++) {
-                            buffer32->line[(vid->displine << 1)][(x << 3) + c + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 3) + c + 8] = cols[(fontdat[vid->fontbase + chr][vid->sc & 7] & (1 << (c ^ 7))) ? 1 : 0] ^ 15;
+                            buffer32->line[vid->displine << 1][(x << 3) + c + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 3) + c + 8] = cols[(fontdat[vid->fontbase + chr][vid->sc & 7] & (1 << (c ^ 7))) ? 1 : 0] ^ 15;
                         }
                     } else {
                         for (c = 0; c < 8; c++) {
-                            buffer32->line[(vid->displine << 1)][(x << 3) + c + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 3) + c + 8] = cols[(fontdat[vid->fontbase + chr][vid->sc & 7] & (1 << (c ^ 7))) ? 1 : 0];
+                            buffer32->line[vid->displine << 1][(x << 3) + c + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 3) + c + 8] = cols[(fontdat[vid->fontbase + chr][vid->sc & 7] & (1 << (c ^ 7))) ? 1 : 0];
                         }
                     }
                     vid->ma++;
                 }
             } else if (!(vid->cgamode & 2)) {
                 for (x = 0; x < 40; x++) {
-                    chr        = vid->vram[((vid->ma << 1) & 0x3fff)];
-                    attr       = vid->vram[(((vid->ma << 1) + 1) & 0x3fff)];
+                    chr        = vid->vram[(vid->ma << 1) & 0x3fff];
+                    attr       = vid->vram[((vid->ma << 1) + 1) & 0x3fff];
                     drawcursor = ((vid->ma == ca) && vid->con && vid->cursoron);
                     if (vid->cgamode & 0x20) {
                         cols[1] = (attr & 15) + 16;
@@ -408,11 +426,11 @@ vid_poll_1512(void *priv)
                     vid->ma++;
                     if (drawcursor) {
                         for (c = 0; c < 8; c++) {
-                            buffer32->line[(vid->displine << 1)][(x << 4) + (c << 1) + 8] = buffer32->line[(vid->displine << 1)][(x << 4) + (c << 1) + 1 + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 4) + (c << 1) + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 4) + (c << 1) + 1 + 8] = cols[(fontdat[vid->fontbase + chr][vid->sc & 7] & (1 << (c ^ 7))) ? 1 : 0] ^ 15;
+                            buffer32->line[vid->displine << 1][(x << 4) + (c << 1) + 8] = buffer32->line[vid->displine << 1][(x << 4) + (c << 1) + 1 + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 4) + (c << 1) + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 4) + (c << 1) + 1 + 8] = cols[(fontdat[vid->fontbase + chr][vid->sc & 7] & (1 << (c ^ 7))) ? 1 : 0] ^ 15;
                         }
                     } else {
                         for (c = 0; c < 8; c++) {
-                            buffer32->line[(vid->displine << 1)][(x << 4) + (c << 1) + 8] = buffer32->line[(vid->displine << 1)][(x << 4) + (c << 1) + 1 + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 4) + (c << 1) + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 4) + (c << 1) + 1 + 8] = cols[(fontdat[vid->fontbase + chr][vid->sc & 7] & (1 << (c ^ 7))) ? 1 : 0];
+                            buffer32->line[vid->displine << 1][(x << 4) + (c << 1) + 8] = buffer32->line[vid->displine << 1][(x << 4) + (c << 1) + 1 + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 4) + (c << 1) + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 4) + (c << 1) + 1 + 8] = cols[(fontdat[vid->fontbase + chr][vid->sc & 7] & (1 << (c ^ 7))) ? 1 : 0];
                         }
                     }
                 }
@@ -436,7 +454,7 @@ vid_poll_1512(void *priv)
                     dat = (vid->vram[((vid->ma << 1) & 0x1fff) + ((vid->sc & 1) * 0x2000)] << 8) | vid->vram[((vid->ma << 1) & 0x1fff) + ((vid->sc & 1) * 0x2000) + 1];
                     vid->ma++;
                     for (c = 0; c < 8; c++) {
-                        buffer32->line[(vid->displine << 1)][(x << 4) + (c << 1) + 8] = buffer32->line[(vid->displine << 1)][(x << 4) + (c << 1) + 1 + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 4) + (c << 1) + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 4) + (c << 1) + 1 + 8] = cols[dat >> 14];
+                        buffer32->line[vid->displine << 1][(x << 4) + (c << 1) + 8] = buffer32->line[vid->displine << 1][(x << 4) + (c << 1) + 1 + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 4) + (c << 1) + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 4) + (c << 1) + 1 + 8] = cols[dat >> 14];
                         dat <<= 2;
                     }
                 }
@@ -450,7 +468,7 @@ vid_poll_1512(void *priv)
 
                     vid->ma++;
                     for (c = 0; c < 16; c++) {
-                        buffer32->line[(vid->displine << 1)][(x << 4) + c + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 4) + c + 8] = (((dat >> 15) | ((dat2 >> 15) << 1) | ((dat3 >> 15) << 2) | ((dat4 >> 15) << 3)) & (vid->cgacol & 15)) + 16;
+                        buffer32->line[vid->displine << 1][(x << 4) + c + 8] = buffer32->line[(vid->displine << 1) + 1][(x << 4) + c + 8] = (((dat >> 15) | ((dat2 >> 15) << 1) | ((dat3 >> 15) << 2) | ((dat4 >> 15) << 3)) & (vid->cgacol & 15)) + 16;
                         dat <<= 1;
                         dat2 <<= 1;
                         dat3 <<= 1;
@@ -771,9 +789,15 @@ vid_out_1640(uint16_t addr, uint8_t val, void *priv)
                         mem_mapping_set_addr(&vid->ega.mapping,
                                              0xb8000, 0x08000);
                         break;
+
+                    default:
+                        break;
                 }
             }
             return;
+
+        default:
+            break;
     }
 
     if (vid->cga_enabled)
@@ -897,7 +921,8 @@ const device_t vid_1640_device = {
 
 extern int nmi_mask;
 
-static uint32_t blue, green;
+static uint32_t blue;
+static uint32_t green;
 
 static uint32_t lcdcols[256][2][2];
 
@@ -913,6 +938,9 @@ ams_inform(amsvid_t *vid)
         case PC200_MDA:
         case PC200_LCDM:
             video_inform(VIDEO_FLAG_TYPE_MDA, &timing_pc200);
+            break;
+
+        default:
             break;
     }
 }
@@ -980,10 +1008,9 @@ static unsigned char mapping2[256] = {
 static void
 set_lcd_cols(uint8_t mode_reg)
 {
-    unsigned char *mapping = (mode_reg & 0x80) ? mapping2 : mapping1;
-    int            c;
+    const unsigned char *mapping = (mode_reg & 0x80) ? mapping2 : mapping1;
 
-    for (c = 0; c < 256; c++) {
+    for (uint16_t c = 0; c < 256; c++) {
         switch (mapping[c]) {
             case 0:
                 lcdcols[c][0][0] = lcdcols[c][1][0] = green;
@@ -1003,6 +1030,9 @@ set_lcd_cols(uint8_t mode_reg)
             case 3:
                 lcdcols[c][0][0] = lcdcols[c][1][0] = blue;
                 lcdcols[c][0][1] = lcdcols[c][1][1] = blue;
+                break;
+
+            default:
                 break;
         }
     }
@@ -1027,13 +1057,16 @@ vid_in_200(uint16_t addr, void *priv)
             ret = vid->crtc_index;   /* Read NMI reason */
             vid->crtc_index &= 0x1f; /* Reset NMI reason */
             nmi = 0;                 /* And reset NMI flag */
-            return (ret);
+            return ret;
 
         case 0x03de:
             return ((vid->operation_ctrl & 0xc7) | vid->dipswitches); /*External CGA*/
 
         case 0x03df:
             return (vid->reg_3df);
+
+        default:
+            break;
     }
 
     if (addr >= 0x3D0 && addr <= 0x3DF)
@@ -1167,6 +1200,9 @@ vid_out_200(uint16_t addr, uint8_t val, void *priv)
                 mem_mapping_enable(&vid->cga.mapping);
             }
             return;
+
+        default:
+            break;
     }
 
     if (addr >= 0x3D0 && addr <= 0x3DF)
@@ -1216,7 +1252,6 @@ lcd_draw_char_40(amsvid_t *vid, uint32_t *buffer, uint8_t chr,
                  uint8_t attr, int drawcursor, int blink, int sc,
                  uint8_t control)
 {
-    int     c;
     uint8_t bits = fontdat[chr + vid->cga.fontbase][sc];
     uint8_t mask = 0x80;
 
@@ -1225,7 +1260,7 @@ lcd_draw_char_40(amsvid_t *vid, uint32_t *buffer, uint8_t chr,
     if (drawcursor)
         bits ^= 0xFF;
 
-    for (c = 0; c < 8; c++, mask >>= 1) {
+    for (uint8_t c = 0; c < 8; c++, mask >>= 1) {
         if (control & 0x20) {
             buffer[c * 2] = buffer[c * 2 + 1] = lcdcols[attr & 0x7F][blink][(bits & mask) ? 1 : 0];
         } else {
@@ -1242,7 +1277,8 @@ lcdm_poll(amsvid_t *vid)
     int      drawcursor;
     int      x;
     int      oldvc;
-    uint8_t  chr, attr;
+    uint8_t  chr;
+    uint8_t  attr;
     int      oldsc;
     int      blink;
 
@@ -1263,7 +1299,7 @@ lcdm_poll(amsvid_t *vid)
                 drawcursor = ((mda->ma == ca) && mda->con && mda->cursoron);
                 blink      = ((mda->blink & 16) && (mda->ctrl & 0x20) && (attr & 0x80) && !drawcursor);
 
-                lcd_draw_char_80(vid, &((uint32_t *) (buffer32->line[mda->displine]))[x * 8], chr, attr, drawcursor, blink, mda->sc, 0, mda->ctrl);
+                lcd_draw_char_80(vid, &(buffer32->line[mda->displine])[x * 8], chr, attr, drawcursor, blink, mda->sc, 0, mda->ctrl);
                 mda->ma++;
             }
         }
@@ -1351,7 +1387,7 @@ lcdm_poll(amsvid_t *vid)
             mda->sc &= 31;
             mda->ma = mda->maback;
         }
-        if ((mda->sc == (mda->crtc[10] & 31) || ((mda->crtc[8] & 3) == 3 && mda->sc == ((mda->crtc[10] & 31) >> 1))))
+        if (mda->sc == (mda->crtc[10] & 31) || ((mda->crtc[8] & 3) == 3 && mda->sc == ((mda->crtc[10] & 31) >> 1)))
             mda->con = 1;
     }
 }
@@ -1361,9 +1397,12 @@ lcdc_poll(amsvid_t *vid)
 {
     cga_t   *cga = &vid->cga;
     int      drawcursor;
-    int      x, c, xs_temp, ys_temp;
+    int      x;
+    int      xs_temp;
+    int      ys_temp;
     int      oldvc;
-    uint8_t  chr, attr;
+    uint8_t  chr;
+    uint8_t  attr;
     uint16_t dat;
     int      oldsc;
     uint16_t ca;
@@ -1391,17 +1430,17 @@ lcdc_poll(amsvid_t *vid)
                     attr       = cga->charbuffer[(x << 1) + 1];
                     drawcursor = ((cga->ma == ca) && cga->con && cga->cursoron);
                     blink      = ((cga->cgablink & 16) && (cga->cgamode & 0x20) && (attr & 0x80) && !drawcursor);
-                    lcd_draw_char_80(vid, &(buffer32->line[(cga->displine << 1)])[x * 8], chr, attr, drawcursor, blink, cga->sc, cga->cgamode & 0x40, cga->cgamode);
+                    lcd_draw_char_80(vid, &(buffer32->line[cga->displine << 1])[x * 8], chr, attr, drawcursor, blink, cga->sc, cga->cgamode & 0x40, cga->cgamode);
                     lcd_draw_char_80(vid, &(buffer32->line[(cga->displine << 1) + 1])[x * 8], chr, attr, drawcursor, blink, cga->sc, cga->cgamode & 0x40, cga->cgamode);
                     cga->ma++;
                 }
             } else if (!(cga->cgamode & 2)) {
                 for (x = 0; x < cga->crtc[1]; x++) {
-                    chr        = cga->vram[((cga->ma << 1) & 0x3fff)];
-                    attr       = cga->vram[(((cga->ma << 1) + 1) & 0x3fff)];
+                    chr        = cga->vram[(cga->ma << 1) & 0x3fff];
+                    attr       = cga->vram[((cga->ma << 1) + 1) & 0x3fff];
                     drawcursor = ((cga->ma == ca) && cga->con && cga->cursoron);
                     blink      = ((cga->cgablink & 16) && (cga->cgamode & 0x20) && (attr & 0x80) && !drawcursor);
-                    lcd_draw_char_40(vid, &(buffer32->line[(cga->displine << 1)])[x * 16], chr, attr, drawcursor, blink, cga->sc, cga->cgamode);
+                    lcd_draw_char_40(vid, &(buffer32->line[cga->displine << 1])[x * 16], chr, attr, drawcursor, blink, cga->sc, cga->cgamode);
                     lcd_draw_char_40(vid, &(buffer32->line[(cga->displine << 1) + 1])[x * 16], chr, attr, drawcursor, blink, cga->sc, cga->cgamode);
                     cga->ma++;
                 }
@@ -1409,8 +1448,8 @@ lcdc_poll(amsvid_t *vid)
                 for (x = 0; x < cga->crtc[1]; x++) {
                     dat = (cga->vram[((cga->ma << 1) & 0x1fff) + ((cga->sc & 1) * 0x2000)] << 8) | cga->vram[((cga->ma << 1) & 0x1fff) + ((cga->sc & 1) * 0x2000) + 1];
                     cga->ma++;
-                    for (c = 0; c < 16; c++) {
-                        buffer32->line[(cga->displine << 1)][(x << 4) + c] = buffer32->line[(cga->displine << 1) + 1][(x << 4) + c] = (dat & 0x8000) ? blue : green;
+                    for (uint8_t c = 0; c < 16; c++) {
+                        buffer32->line[cga->displine << 1][(x << 4) + c] = buffer32->line[(cga->displine << 1) + 1][(x << 4) + c] = (dat & 0x8000) ? blue : green;
                         dat <<= 1;
                     }
                 }
@@ -1546,19 +1585,19 @@ lcdc_poll(amsvid_t *vid)
         }
         if (cga->cgadispon)
             cga->cgastat &= ~1;
-        if ((cga->sc == (cga->crtc[10] & 31) || ((cga->crtc[8] & 3) == 3 && cga->sc == ((cga->crtc[10] & 31) >> 1))))
+        if (cga->sc == (cga->crtc[10] & 31) || ((cga->crtc[8] & 3) == 3 && cga->sc == ((cga->crtc[10] & 31) >> 1)))
             cga->con = 1;
         if (cga->cgadispon && (cga->cgamode & 1)) {
             for (x = 0; x < (cga->crtc[1] << 1); x++)
-                cga->charbuffer[x] = cga->vram[(((cga->ma << 1) + x) & 0x3fff)];
+                cga->charbuffer[x] = cga->vram[((cga->ma << 1) + x) & 0x3fff];
         }
     }
 }
 
 static void
-vid_poll_200(void *p)
+vid_poll_200(void *priv)
 {
-    amsvid_t *vid = (amsvid_t *) p;
+    amsvid_t *vid = (amsvid_t *) priv;
 
     switch (vid->emulation) {
         case PC200_LCDM:
@@ -1567,6 +1606,9 @@ vid_poll_200(void *p)
         case PC200_LCDC:
             lcdc_poll(vid);
             return;
+
+        default:
+            break;
     }
 }
 
@@ -1602,6 +1644,9 @@ vid_init_200(amstrad_t *ams)
                 break;
                 /* The other combination is 'IDA disabled' (0x20) - see
                  * m_amstrad.c */
+
+            default:
+                break;
         }
     else
         switch (vid->emulation) {
@@ -1623,6 +1668,9 @@ vid_init_200(amstrad_t *ams)
             case PC200_LCDM:
                 vid->dipswitches = 0x10;
                 break;
+
+            default:
+                break;
         }
 
     cga       = &vid->cga;
@@ -1642,6 +1690,7 @@ vid_init_200(amstrad_t *ams)
     mda_setcol(0xC0, 0, 1, 0);
 
     cga->fontbase = (device_get_config_int("codepage") & 3) * 256;
+    mda->fontbase = cga->fontbase;
 
     timer_add(&vid->timer, vid_poll_200, vid, 1);
     mem_mapping_add(&vid->mda.mapping, 0xb0000, 0x08000,
@@ -1957,40 +2006,38 @@ const device_t vid_pc3086_device = {
 };
 
 static void
-ms_write(uint16_t addr, uint8_t val, void *priv)
+ms_write(uint16_t addr, UNUSED(uint8_t val), UNUSED(void *priv))
 {
-    amstrad_t *ams = (amstrad_t *) priv;
-
     if ((addr == 0x78) || (addr == 0x79))
-        ams->mousex = 0;
+        mouse_clear_x();
     else
-        ams->mousey = 0;
+        mouse_clear_y();
 }
 
 static uint8_t
-ms_read(uint16_t addr, void *priv)
+ms_read(uint16_t addr, UNUSED(void *priv))
 {
-    amstrad_t *ams = (amstrad_t *) priv;
-    uint8_t    ret;
+    uint8_t ret;
+    int     delta = 0;
 
     if ((addr == 0x78) || (addr == 0x79)) {
-        ret         = ams->mousex;
-        ams->mousex = 0;
+        mouse_subtract_x(&delta, NULL, -128, 127, 0);
+        mouse_clear_x();
     } else {
-        ret         = ams->mousey;
-        ams->mousey = 0;
+        mouse_subtract_y(&delta, NULL, -128, 127, 1, 0);
+        mouse_clear_y();
     }
 
-    return (ret);
+    ret = (uint8_t) (int8_t) delta;
+
+    return ret;
 }
 
 static int
-ms_poll(int x, int y, int z, int b, void *priv)
+ms_poll(void *priv)
 {
     amstrad_t *ams = (amstrad_t *) priv;
-
-    ams->mousex += x;
-    ams->mousey -= y;
+    int b = mouse_get_buttons_ex();
 
     if ((b & 1) && !(ams->oldb & 1))
         keyboard_send(0x7e);
@@ -2004,7 +2051,7 @@ ms_poll(int x, int y, int z, int b, void *priv)
 
     ams->oldb = b;
 
-    return (0);
+    return 0;
 }
 
 static void
@@ -2172,7 +2219,7 @@ kbd_read(uint16_t port, void *priv)
             amstrad_log("AMDkb: bad keyboard read %04X\n", port);
     }
 
-    return (ret);
+    return ret;
 }
 
 static void
@@ -2209,6 +2256,9 @@ ams_write(uint16_t port, uint8_t val, void *priv)
 
         case 0xdead:
             ams->dead = val;
+            break;
+
+        default:
             break;
     }
 }
@@ -2273,6 +2323,9 @@ ams_read(uint16_t port, void *priv)
                         case AMSTRAD_SW10:
                             ret |= 0x20;
                             break;
+
+                        default:
+                            break;
                     }
                     break;
 
@@ -2288,9 +2341,12 @@ ams_read(uint16_t port, void *priv)
         case 0xdead:
             ret = ams->dead;
             break;
+
+        default:
+            break;
     }
 
-    return (ret);
+    return ret;
 }
 
 static const scancode scancode_pc200[512] = {
@@ -2470,6 +2526,9 @@ machine_amstrad_init(const machine_t *model, int type)
         case AMS_PC3086:
             ams->fdc = device_add(&fdc_at_actlow_device);
             break;
+
+        default:
+            break;
     }
 
     ams->language = 7;
@@ -2527,6 +2586,9 @@ machine_amstrad_init(const machine_t *model, int type)
                 device_context_restore();
                 device_add(&paradise_pvga1a_pc3086_device);
                 break;
+
+            default:
+                break;
         }
     else if ((type == AMS_PC200) || (type == AMS_PPC512))
         io_sethandler(0x03de, 1,
@@ -2537,10 +2599,10 @@ machine_amstrad_init(const machine_t *model, int type)
     io_sethandler(0x0060, 7,
                   kbd_read, NULL, NULL, kbd_write, NULL, NULL, ams);
     timer_add(&ams->send_delay_timer, kbd_poll, ams, 1);
-    if (type == AMS_PC200)
-        keyboard_set_table(scancode_pc200);
-    else
+    if (type == AMS_PC1512)
         keyboard_set_table(scancode_xt);
+    else
+        keyboard_set_table(scancode_pc200);
     keyboard_send = kbd_adddata_ex;
     keyboard_scan = 1;
     keyboard_set_is_amstrad(((type == AMS_PC1512) || (type == AMS_PC1640)) ? 0 : 1);

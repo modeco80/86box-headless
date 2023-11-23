@@ -33,6 +33,7 @@
 #include <86box/midi.h>
 #include <86box/plat_dynld.h>
 #include <86box/sound.h>
+#include <86box/plat_unused.h>
 
 #if defined(_WIN32) && !defined(USE_FAUDIO)
 static void *xaudio2_handle = NULL;
@@ -44,7 +45,7 @@ static dllimp_t xaudio2_imports[] = {
 #    define XAudio2Create pXAudio2Create
 #endif
 
-static int                     midi_freq     = 44100;
+static int                     midi_freq     = FREQ_44100;
 static int                     midi_buf_size = 4410;
 static int                     initialized   = 0;
 static IXAudio2               *xaudio2       = NULL;
@@ -53,36 +54,42 @@ static IXAudio2SourceVoice    *srcvoice      = NULL;
 static IXAudio2SourceVoice    *srcvoicemidi  = NULL;
 static IXAudio2SourceVoice    *srcvoicecd    = NULL;
 
-#define FREQ   48000
+#define FREQ   SOUND_FREQ
 #define BUFLEN SOUNDBUFLEN
 
 static void WINAPI
-OnVoiceProcessingPassStart(IXAudio2VoiceCallback *callback, uint32_t bytesRequired)
+OnVoiceProcessingPassStart(UNUSED(IXAudio2VoiceCallback *callback), UNUSED(uint32_t bytesRequired))
 {
+    //
 }
 static void WINAPI
-OnVoiceProcessingPassEnd(IXAudio2VoiceCallback *callback)
+OnVoiceProcessingPassEnd(UNUSED(IXAudio2VoiceCallback *callback))
 {
+    //
 }
 static void WINAPI
-OnStreamEnd(IXAudio2VoiceCallback *callback)
+OnStreamEnd(UNUSED(IXAudio2VoiceCallback *callback))
 {
+    //
 }
 static void WINAPI
-OnBufferStart(IXAudio2VoiceCallback *callback, void *pBufferContext)
+OnBufferStart(UNUSED(IXAudio2VoiceCallback *callback), UNUSED(void *pBufferContext))
 {
+    //
 }
 static void WINAPI
-OnLoopEnd(IXAudio2VoiceCallback *callback, void *pBufferContext)
+OnLoopEnd(UNUSED(IXAudio2VoiceCallback *callback), UNUSED(void *pBufferContext))
 {
+    //
 }
 static void WINAPI
-OnVoiceError(IXAudio2VoiceCallback *callback, void *pBufferContext, HRESULT error)
+OnVoiceError(UNUSED(IXAudio2VoiceCallback *callback), UNUSED(void *pBufferContext), UNUSED(HRESULT error))
 {
+    //
 }
 
 static void WINAPI
-OnBufferEnd(IXAudio2VoiceCallback *callback, void *pBufferContext)
+OnBufferEnd(UNUSED(IXAudio2VoiceCallback *callback), UNUSED(void *pBufferContext))
 {
     free(pBufferContext);
 }
@@ -167,7 +174,7 @@ inital(void)
     IXAudio2SourceVoice_Start(srcvoice, 0, XAUDIO2_COMMIT_NOW);
     IXAudio2SourceVoice_Start(srcvoicecd, 0, XAUDIO2_COMMIT_NOW);
 
-    char *mdn = midi_out_device_get_internal_name(midi_output_device_current);
+    const char *mdn = midi_out_device_get_internal_name(midi_output_device_current);
 
     if (strcmp(mdn, "none") && strcmp(mdn, SYSTEM_MIDI_INTERNAL_NAME)) {
         fmt.nSamplesPerSec  = midi_freq;
@@ -221,10 +228,10 @@ givealbuffer_common(void *buf, IXAudio2SourceVoice *sourcevoice, size_t buflen)
     buffer.Flags          = 0;
     if (sound_is_float) {
         buffer.pAudioData = calloc(buflen, sizeof(float));
-        buffer.AudioBytes = (buflen) * sizeof(float);
+        buffer.AudioBytes = buflen * sizeof(float);
     } else {
         buffer.pAudioData = calloc(buflen, sizeof(int16_t));
-        buffer.AudioBytes = (buflen) * sizeof(int16_t);
+        buffer.AudioBytes = buflen * sizeof(int16_t);
     }
     if (buffer.pAudioData == NULL) {
         fatal("xaudio2: Out Of Memory!");

@@ -74,13 +74,16 @@ w83787_log(const char *fmt, ...)
 
 #define HAS_IDE_FUNCTIONALITY dev->ide_function
 
-typedef struct {
-    uint8_t  tries, regs[42];
+typedef struct w83787f_t {
+    uint8_t  tries;
+    uint8_t  regs[42];
     uint16_t reg_init;
-    int      locked, rw_locked,
-        cur_reg,
-        key, ide_function,
-        ide_start;
+    int      locked;
+    int      rw_locked;
+    int      cur_reg;
+    int      key;
+    int      ide_function;
+    int      ide_start;
     fdc_t    *fdc;
     serial_t *uart[2];
     void     *gameport;
@@ -123,8 +126,10 @@ w83787f_serial_handler(w83787f_t *dev, int uart)
     int      urs0 = !!(dev->regs[1] & (1 << uart));
     int      urs1 = !!(dev->regs[1] & (4 << uart));
     int      urs2 = !!(dev->regs[3] & (8 >> uart));
-    int      urs, irq = COM1_IRQ;
-    uint16_t addr = COM1_ADDR, enable = 1;
+    int      urs;
+    int      irq = COM1_IRQ;
+    uint16_t addr = COM1_ADDR;
+    uint16_t enable = 1;
 
     urs = (urs1 << 1) | urs0;
 
@@ -165,7 +170,8 @@ w83787f_lpt_handler(w83787f_t *dev)
 {
     int      ptras = (dev->regs[1] >> 4) & 0x03;
     int      irq   = LPT1_IRQ;
-    uint16_t addr = LPT1_ADDR, enable = 1;
+    uint16_t addr = LPT1_ADDR;
+    uint16_t enable = 1;
 
     switch (ptras) {
         case 0x00:
@@ -339,6 +345,9 @@ w83787f_write(uint16_t port, uint8_t val, void *priv)
             if (valxor & 0x20)
                 w83787f_remap(dev);
             break;
+
+        default:
+            break;
     }
 }
 
@@ -365,6 +374,8 @@ w83787f_read(uint16_t port, void *priv)
 static void
 w83787f_reset(w83787f_t *dev)
 {
+    uint16_t hefere = dev->reg_init & 0x0100;
+
     lpt1_remove();
     lpt1_init(LPT1_ADDR);
     lpt1_irq(LPT1_IRQ);
@@ -401,7 +412,7 @@ w83787f_reset(w83787f_t *dev)
     dev->regs[0x07] = 0xF5;
     dev->regs[0x09] = dev->reg_init & 0xff;
     dev->regs[0x0a] = 0x1F;
-    dev->regs[0x0c] = 0x2C;
+    dev->regs[0x0c] = 0x0C | (hefere >> 3);
     dev->regs[0x0d] = 0xA3;
 
     gameport_remap(dev->gameport, 0);
@@ -411,7 +422,7 @@ w83787f_reset(w83787f_t *dev)
 
     w83787f_lpt_handler(dev);
 
-    dev->key = 0x89;
+    dev->key = 0x88 | (hefere >> 8);
 
     w83787f_remap(dev);
 
@@ -447,17 +458,31 @@ w83787f_init(const device_t *info)
 
     dev->ide_start = !!(info->local & 0x40);
 
-    dev->reg_init = info->local & 0x0f;
+    dev->reg_init = info->local & 0x010f;
     w83787f_reset(dev);
 
     return dev;
 }
 
+const device_t w83787f_88h_device = {
+    .name          = "Winbond W83787F/IF Super I/O",
+    .internal_name = "w83787f",
+    .flags         = 0,
+    .local         = 0x0009,
+    .init          = w83787f_init,
+    .close         = w83787f_close,
+    .reset         = NULL,
+    { .available = NULL },
+    .speed_changed = NULL,
+    .force_redraw  = NULL,
+    .config        = NULL
+};
+
 const device_t w83787f_device = {
     .name          = "Winbond W83787F/IF Super I/O",
     .internal_name = "w83787f",
     .flags         = 0,
-    .local         = 0x09,
+    .local         = 0x0109,
     .init          = w83787f_init,
     .close         = w83787f_close,
     .reset         = NULL,
@@ -471,7 +496,7 @@ const device_t w83787f_ide_device = {
     .name          = "Winbond W83787F/IF Super I/O (With IDE)",
     .internal_name = "w83787f_ide",
     .flags         = 0,
-    .local         = 0x19,
+    .local         = 0x0119,
     .init          = w83787f_init,
     .close         = w83787f_close,
     .reset         = NULL,
@@ -485,7 +510,7 @@ const device_t w83787f_ide_en_device = {
     .name          = "Winbond W83787F/IF Super I/O (With IDE Enabled)",
     .internal_name = "w83787f_ide_en",
     .flags         = 0,
-    .local         = 0x59,
+    .local         = 0x0159,
     .init          = w83787f_init,
     .close         = w83787f_close,
     .reset         = NULL,
@@ -499,7 +524,7 @@ const device_t w83787f_ide_sec_device = {
     .name          = "Winbond W83787F/IF Super I/O (With Secondary IDE)",
     .internal_name = "w83787f_ide_sec",
     .flags         = 0,
-    .local         = 0x39,
+    .local         = 0x0139,
     .init          = w83787f_init,
     .close         = w83787f_close,
     .reset         = NULL,

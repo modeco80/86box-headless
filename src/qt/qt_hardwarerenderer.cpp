@@ -137,11 +137,28 @@ HardwareRenderer::initializeGL()
 }
 
 void
+HardwareRenderer::paintOverGL()
+{
+    /* Context switching is needed to make use of QPainter to draw status bar icons in fullscreen.
+       Especially since it seems to be impossible to use QPainter on externally-created OpenGL contexts. */
+    if (video_fullscreen && status_icons_fullscreen) {
+        m_context->makeCurrent(nullptr);
+        makeCurrent();
+        QPainter painter(this);
+        drawStatusBarIcons(&painter);
+        painter.end();
+        doneCurrent();
+        m_context->makeCurrent(this);
+    }
+}
+
+void
 HardwareRenderer::paintGL()
 {
     m_context->makeCurrent(this);
     glClear(GL_COLOR_BUFFER_BIT);
-    QVector<QVector2D> verts, texcoords;
+    QVector<QVector2D> verts;
+    QVector<QVector2D> texcoords;
     QMatrix4x4         mat;
     mat.setToIdentity();
     mat.ortho(QRectF(0, 0, (qreal) width(), (qreal) height()));

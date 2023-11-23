@@ -42,7 +42,8 @@
 #include <86box/scsi_pcscsi.h>
 #include <86box/scsi_spock.h>
 
-int scsi_card_current[SCSI_BUS_MAX] = { 0, 0 };
+int scsi_card_current[SCSI_BUS_MAX] = { 0, 0, 0, 0 };
+double scsi_bus_speed[SCSI_BUS_MAX] = { 0.0, 0.0, 0.0, 0.0 };
 
 static uint8_t next_scsi_bus = 0;
 
@@ -86,6 +87,7 @@ static SCSI_CARD scsi_cards[] = {
     { &buslogic_640a_device,     },
     { &ncr53c90_mca_device,      },
     { &spock_device,             },
+    { &tribble_device,           },
     { &buslogic_958d_pci_device, },
     { &ncr53c810_pci_device,     },
     { &ncr53c815_pci_device,     },
@@ -125,7 +127,7 @@ scsi_card_available(int card)
     if (scsi_cards[card].device)
         return (device_available(scsi_cards[card].device));
 
-    return (1);
+    return 1;
 }
 
 const device_t *
@@ -138,12 +140,12 @@ int
 scsi_card_has_config(int card)
 {
     if (!scsi_cards[card].device)
-        return (0);
+        return 0;
 
     return (device_has_config(scsi_cards[card].device) ? 1 : 0);
 }
 
-char *
+const char *
 scsi_card_get_internal_name(int card)
 {
     return device_get_internal_name(scsi_cards[card].device);
@@ -155,18 +157,18 @@ scsi_card_get_from_internal_name(char *s)
     int c = 0;
 
     while (scsi_cards[c].device != NULL) {
-        if (!strcmp((char *) scsi_cards[c].device->internal_name, s))
-            return (c);
+        if (!strcmp(scsi_cards[c].device->internal_name, s))
+            return c;
         c++;
     }
 
-    return (0);
+    return 0;
 }
 
 void
 scsi_card_init(void)
 {
-    int i = 0, max = SCSI_BUS_MAX;
+    int max = SCSI_BUS_MAX;
 
     /* On-board SCSI controllers get the first bus, so if one is present,
        increase our instance number here. */
@@ -176,11 +178,21 @@ scsi_card_init(void)
     /* Do not initialize any controllers if we have do not have any SCSI
            bus left. */
     if (max > 0) {
-        for (i = 0; i < max; i++) {
-            if (!scsi_cards[scsi_card_current[i]].device)
-                continue;
-
-            device_add_inst(scsi_cards[scsi_card_current[i]].device, i + 1);
+        for (int i = 0; i < max; i++) {
+            if ((scsi_card_current[i] > 0) && scsi_cards[scsi_card_current[i]].device)
+                device_add_inst(scsi_cards[scsi_card_current[i]].device, i + 1);
         }
     }
+}
+
+void
+scsi_bus_set_speed(uint8_t bus, double speed)
+{
+    scsi_bus_speed[bus] = speed;
+}
+
+double
+scsi_bus_get_speed(uint8_t bus)
+{
+    return scsi_bus_speed[bus];
 }

@@ -36,6 +36,8 @@
 #include <86box/ppi.h>
 #include <86box/video.h>
 #include <86box/port_6x.h>
+#include <86box/plat_unused.h>
+#include <86box/random.h>
 
 #define PS2_REFRESH_TIME (16 * TIMER_USEC)
 
@@ -44,12 +46,16 @@
 #define PORT_6X_MIRROR   4
 #define PORT_6X_SWA      8
 
+static int cycles_sub = 0;
+
 static void
 port_6x_write(uint16_t port, uint8_t val, void *priv)
 {
-    port_6x_t *dev = (port_6x_t *) priv;
+    const port_6x_t *dev = (port_6x_t *) priv;
 
     port &= 3;
+
+    cycles -= cycles_sub;
 
     if ((port == 3) && (dev->flags & PORT_6X_MIRROR))
         port = 1;
@@ -68,25 +74,32 @@ port_6x_write(uint16_t port, uint8_t val, void *priv)
             if (dev->flags & PORT_6X_TURBO)
                 xi8088_turbo_set(!!(val & 0x04));
             break;
+
+        default:
+            break;
     }
 }
 
 static uint8_t
-port_61_read_simple(uint16_t port, void *priv)
+port_61_read_simple(UNUSED(uint16_t port), UNUSED(void *priv))
 {
     uint8_t ret = ppi.pb & 0x1f;
+
+    cycles -= cycles_sub;
 
     if (ppispeakon)
         ret |= 0x20;
 
-    return (ret);
+    return ret;
 }
 
 static uint8_t
-port_61_read(uint16_t port, void *priv)
+port_61_read(UNUSED(uint16_t port), void *priv)
 {
-    port_6x_t *dev = (port_6x_t *) priv;
-    uint8_t    ret = 0xff;
+    const port_6x_t *dev = (port_6x_t *) priv;
+    uint8_t          ret = 0xff;
+
+    cycles -= cycles_sub;
 
     if (dev->flags & PORT_6X_EXT_REF) {
         ret = ppi.pb & 0x0f;
@@ -102,11 +115,11 @@ port_61_read(uint16_t port, void *priv)
     if (dev->flags & PORT_6X_TURBO)
         ret = (ret & 0xfb) | (xi8088_turbo_get() ? 0x04 : 0x00);
 
-    return (ret);
+    return ret;
 }
 
 static uint8_t
-port_62_read(uint16_t port, void *priv)
+port_62_read(UNUSED(uint16_t port), UNUSED(void *priv))
 {
     uint8_t ret = 0xff;
 
@@ -114,8 +127,8 @@ port_62_read(uint16_t port, void *priv)
     ret = 0x00;
     if (ppi.pb & 0x8) {
         /* Switches 4, 5 - floppy drives (number) */
-        int i, fdd_count = 0;
-        for (i = 0; i < FDD_NUM; i++) {
+        int fdd_count = 0;
+        for (uint8_t i = 0; i < FDD_NUM; i++) {
             if (fdd_get_flags(i))
                 fdd_count++;
         }
@@ -138,7 +151,7 @@ port_62_read(uint16_t port, void *priv)
             ret |= 0x02;
     }
 
-    return (ret);
+    return ret;
 }
 
 static void
@@ -185,6 +198,8 @@ port_6x_init(const device_t *info)
 
     if (dev->flags & PORT_6X_SWA)
         io_sethandler(0x0062, 1, port_62_read, NULL, NULL, NULL, NULL, NULL, dev);
+
+    cycles_sub = is486 ? ISA_CYCLES(8) : 0;
 
     return dev;
 }

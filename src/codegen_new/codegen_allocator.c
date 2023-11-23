@@ -13,6 +13,7 @@
 #include <86box/86box.h>
 #include "cpu.h"
 #include <86box/mem.h>
+#include <86box/plat_unused.h>
 
 #include "codegen.h"
 #include "codegen_allocator.h"
@@ -32,8 +33,6 @@ int codegen_allocator_usage = 0;
 void
 codegen_allocator_init(void)
 {
-    int c;
-
 #if defined WIN32 || defined _WIN32 || defined _WIN32
     mem_block_alloc = VirtualAlloc(NULL, MEM_BLOCK_NR * MEM_BLOCK_SIZE, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
     /* TODO: check deployment target: older Intel-based versions of macOS don't play
@@ -44,7 +43,7 @@ codegen_allocator_init(void)
     mem_block_alloc = mmap(0, MEM_BLOCK_NR * MEM_BLOCK_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANON | MAP_PRIVATE, -1, 0);
 #endif
 
-    for (c = 0; c < MEM_BLOCK_NR; c++) {
+    for (uint32_t c = 0; c < MEM_BLOCK_NR; c++) {
         mem_blocks[c].offset     = c * MEM_BLOCK_SIZE;
         mem_blocks[c].code_block = BLOCK_INVALID;
         if (c < MEM_BLOCK_NR - 1)
@@ -114,7 +113,7 @@ codeblock_allocator_get_ptr(mem_block_t *block)
 }
 
 void
-codegen_allocator_clean_blocks(struct mem_block_t *block)
+codegen_allocator_clean_blocks(UNUSED(struct mem_block_t *block))
 {
 #if defined __ARM_EABI__ || defined _ARM_ || defined __aarch64__ || defined _M_ARM || defined _M_ARM64
     while (1) {

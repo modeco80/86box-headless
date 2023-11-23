@@ -21,6 +21,8 @@
 #ifndef EMU_CPU_H
 #define EMU_CPU_H
 
+#include "softfloat/softfloat.h"
+
 enum {
     FPU_NONE,
     FPU_8087,
@@ -131,25 +133,27 @@ enum {
 #    define LOOKUP_INV -1
 #endif
 
-typedef struct {
+typedef struct fpu_t {
     const char *name;
     const char *internal_name;
     const int   type;
 } FPU;
 
-typedef struct {
+typedef struct cpu_t {
     const char *name;
     uint64_t    cpu_type;
     const FPU  *fpus;
-    int         rspeed;
+    uint32_t    rspeed;
     double      multi;
     uint16_t    voltage;
     uint32_t    edx_reset;
     uint32_t    cpuid_model;
     uint16_t    cyrix_id;
     uint8_t     cpu_flags;
-    int8_t      mem_read_cycles, mem_write_cycles;
-    int8_t      cache_read_cycles, cache_write_cycles;
+    int8_t      mem_read_cycles;
+    int8_t      mem_write_cycles;
+    int8_t      cache_read_cycles;
+    int8_t      cache_write_cycles;
     int8_t      atclk_div;
 } CPU;
 
@@ -162,9 +166,9 @@ typedef struct {
 } cpu_family_t;
 
 typedef struct {
-    const char  *family;
-    const int    rspeed;
-    const double multi;
+    const char    *family;
+    const uint32_t rspeed;
+    const double   multi;
 } cpu_legacy_table_t;
 
 typedef struct {
@@ -213,17 +217,19 @@ typedef union {
     uint32_t l;
     uint16_t w;
     struct {
-        uint8_t l,
-            h;
+        uint8_t l;
+        uint8_t h;
     } b;
 } x86reg;
 
 typedef struct {
     uint32_t base;
     uint32_t limit;
-    uint8_t  access, ar_high;
+    uint8_t  access;
+    uint8_t  ar_high;
     uint16_t seg;
-    uint32_t limit_low, limit_high;
+    uint32_t limit_low;
+    uint32_t limit_high;
     int      checked; /*Non-zero if selector is known to be valid*/
 } x86seg;
 
@@ -241,8 +247,9 @@ typedef union {
 
 typedef struct {
     /* IDT WinChip and WinChip 2 MSR's */
-    uint32_t tr1, tr12; /* 0x00000002, 0x0000000e */
-    uint32_t cesr;      /* 0x00000011 */
+    uint32_t tr1;  /* 0x00000002, 0x0000000e */
+    uint32_t tr12; /* 0x00000002, 0x0000000e */
+    uint32_t cesr; /* 0x00000011 */
 
     /* Pentium Pro, Pentium II Klamath, and Pentium II Deschutes MSR's */
     uint64_t apic_base; /* 0x0000001b - Should the Pentium not also have this? */
@@ -257,8 +264,9 @@ typedef struct {
     uint64_t mtrr_cap;    /* 0x000000fe */
 
     /* IDT WinChip and WinChip 2 MSR's that are also on the VIA Cyrix III */
-    uint32_t fcr;        /* 0x00000107 (IDT), 0x00001107 (VIA) */
-    uint64_t fcr2, fcr3; /* 0x00000108 (IDT), 0x00001108 (VIA) */
+    uint32_t fcr;  /* 0x00000107 (IDT), 0x00001107 (VIA) */
+    uint64_t fcr2; /* 0x00000108 (IDT), 0x00001108 (VIA) */
+    uint64_t fcr3; /* 0x00000108 (IDT), 0x00001108 (VIA) */
 
     /* Pentium Pro, Pentium II Klamath, and Pentium II Deschutes MSR's */
     uint64_t ecx116;    /* 0x00000116 */
@@ -272,10 +280,12 @@ typedef struct {
 
     /* Pentium Pro, Pentium II Klamath, and Pentium II Deschutes MSR's */
     uint64_t mcg_ctl; /* 0x0000017b - Machine Check Architecture */
+    uint64_t ecx186;  /* 0x00000186, 0x00000187 */
+    uint64_t ecx187;  /* 0x00000186, 0x00000187 */
 
     /* Pentium Pro, Pentium II Klamath, and Pentium II Deschutes MSR's */
-    uint64_t ecx186, ecx187; /* 0x00000186, 0x00000187 */
-    uint64_t ecx1e0;         /* 0x000001e0 */
+    uint64_t debug_ctl; /* 0x000001d9 - Debug Registers Control */
+    uint64_t ecx1e0;    /* 0x000001e0 */
 
     /* Pentium Pro, Pentium II Klamath, and Pentium II Deschutes MSR's that are also
        on the VIA Cyrix III */
@@ -323,7 +333,8 @@ typedef struct {
     uint64_t amd_epmr; /* 0xc0000086 */
 
     /* AMD K6-2C, K6-3, K6-2P, and K6-3P MSR's */
-    uint64_t amd_psor, amd_pfir; /* 0xc0000087, 0xc0000088 */
+    uint64_t amd_psor; /* 0xc0000087, 0xc0000088 */
+    uint64_t amd_pfir; /* 0xc0000087, 0xc0000088 */
 
     /* K6-3, K6-2P, and K6-3P MSR's */
     uint64_t amd_l2aar; /* 0xc0000089 */
@@ -343,33 +354,38 @@ typedef struct {
     uint32_t eaaddr;
 
     int      flags_op;
-    uint32_t flags_res,
-        flags_op1, flags_op2;
+    uint32_t flags_res;
+    uint32_t flags_op1;
+    uint32_t flags_op2;
 
-    uint32_t pc,
-        oldpc, op32;
+    uint32_t pc;
+    uint32_t oldpc;
+    uint32_t op32;
 
     int TOP;
 
     union {
         struct {
-            int8_t rm,
-                mod,
-                reg;
+            int8_t rm;
+            int8_t mod;
+            int8_t reg;
         } rm_mod_reg;
         int32_t rm_mod_reg_data;
     } rm_data;
 
-    uint8_t ssegs, ismmx,
-        abrt, _smi_line;
+    uint8_t ssegs;
+    uint8_t ismmx;
+    uint8_t abrt;
+    uint8_t _smi_line;
 
+    int _cycles;
 #ifdef FPU_CYCLES
-    int _cycles, _fpu_cycles, _in_smm;
-#else
-    int      _cycles, _in_smm;
+    int _fpu_cycles;
 #endif
+    int _in_smm;
 
-    uint16_t npxs, npxc;
+    uint16_t npxs;
+    uint16_t npxc;
 
     double ST[8];
 
@@ -378,31 +394,58 @@ typedef struct {
     MMX_REG MM[8];
 
 #ifdef USE_NEW_DYNAREC
-    uint32_t    old_fp_control, new_fp_control;
+#    if defined(__APPLE__) && defined(__aarch64__)
+    uint64_t old_fp_control;
+    uint64_t new_fp_control;
+#    else
+    uint32_t old_fp_control;
+    uint32_t new_fp_control;
+#    endif
 #    if defined i386 || defined __i386 || defined __i386__ || defined _X86_ || defined _M_IX86
-    uint16_t                                                                           old_fp_control2, new_fp_control2;
+    uint16_t old_fp_control2;
+    uint16_t new_fp_control2;
 #    endif
 #    if defined i386 || defined __i386 || defined __i386__ || defined _X86_ || defined _M_IX86 || defined __amd64__ || defined _M_X64
-    uint32_t                                                                                                                   trunc_fp_control;
+    uint32_t trunc_fp_control;
 #    endif
 #else
-    uint16_t old_npxc, new_npxc;
+    uint16_t old_npxc;
+    uint16_t new_npxc;
 #endif
 
-    x86seg seg_cs, seg_ds, seg_es, seg_ss,
-        seg_fs, seg_gs;
+    x86seg seg_cs;
+    x86seg seg_ds;
+    x86seg seg_es;
+    x86seg seg_ss;
+    x86seg seg_fs;
+    x86seg seg_gs;
 
     union {
         uint32_t l;
         uint16_t w;
     } CR0;
 
-    uint16_t flags, eflags;
+    uint16_t flags;
+    uint16_t eflags;
 
     uint32_t _smbase;
-
-    uint8_t inside_emulation_mode;
 } cpu_state_t;
+
+typedef struct {
+    uint16_t      cwd;
+    uint16_t      swd;
+    uint16_t      tag;
+    uint16_t      foo;
+    uint32_t      fip;
+    uint32_t      fdp;
+    uint16_t      fcs;
+    uint16_t      fds;
+    floatx80      st_space[8];
+    unsigned char tos;
+    unsigned char align1;
+    unsigned char align2;
+    unsigned char align3;
+} fpu_state_t;
 
 #define in_smm   cpu_state._in_smm
 #define smi_line cpu_state._smi_line
@@ -416,7 +459,11 @@ typedef struct {
 #define CPU_STATUS_PMODE   (1 << 2)
 #define CPU_STATUS_V86     (1 << 3)
 #define CPU_STATUS_SMM     (1 << 4)
-#define CPU_STATUS_FLAGS   0xffff
+#ifdef USE_NEW_DYNAREC
+#    define CPU_STATUS_FLAGS 0xff
+#else
+#    define CPU_STATUS_FLAGS 0xffff
+#endif
 
 /*If the cpu_state.flags below are set in cpu_cur_status, they must be set in block->status.
   Otherwise they are ignored*/
@@ -480,6 +527,7 @@ COMPILE_TIME_ASSERT(sizeof(cpu_state_t) <= 128)
 
 /* Global variables. */
 extern cpu_state_t cpu_state;
+extern fpu_state_t fpu_state;
 
 extern const cpu_family_t         cpu_families[];
 extern const cpu_legacy_machine_t cpu_legacy_table[];
@@ -489,16 +537,29 @@ extern int                        cpu_override;
 
 extern int    cpu_isintel;
 extern int    cpu_iscyrix;
-extern int    cpu_16bitbus, cpu_64bitbus;
-extern int    cpu_busspeed, cpu_pci_speed;
+extern int    cpu_16bitbus;
+extern int    cpu_64bitbus;
+extern int    cpu_pci_speed;
 extern int    cpu_multi;
 extern double cpu_dmulti;
 extern double fpu_multi;
+extern double cpu_busspeed;
 extern int    cpu_cyrix_alignment; /*Cyrix 5x86/6x86 only has data misalignment
                                      penalties when crossing 8-byte boundaries*/
 
-extern int is8086, is186, is286, is386, is6117, is486;
-extern int is_am486, is_am486dxl, is_pentium, is_k5, is_k6, is_p6, is_cxsmm;
+extern int is8086;
+extern int is186;
+extern int is286;
+extern int is386;
+extern int is6117;
+extern int is486;
+extern int is_am486;
+extern int is_am486dxl;
+extern int is_pentium;
+extern int is_k5;
+extern int is_k6;
+extern int is_p6;
+extern int is_cxsmm;
 extern int hascache;
 extern int isibm486;
 extern int is_nec;
@@ -516,7 +577,8 @@ extern int hasfpu;
 
 extern uint32_t cpu_features;
 
-extern int smi_latched, smm_in_hlt;
+extern int smi_latched;
+extern int smm_in_hlt;
 extern int smi_block;
 
 #ifdef USE_NEW_DYNAREC
@@ -528,16 +590,24 @@ extern uint64_t cpu_CR4_mask;
 extern uint64_t tsc;
 extern msr_t    msr;
 extern uint8_t  opcode;
-extern int      cgate16;
 extern int      cpl_override;
 extern int      CPUID;
 extern uint64_t xt_cpu_multi;
-extern int      isa_cycles, cpu_inited;
-extern uint32_t oldds, oldss, olddslimit, oldsslimit, olddslimitw, oldsslimitw;
+extern int      isa_cycles;
+extern int      cpu_inited;
+extern uint32_t oldds;
+extern uint32_t oldss;
+extern uint32_t olddslimit;
+extern uint32_t oldsslimit;
+extern uint32_t olddslimitw;
+extern uint32_t oldsslimitw;
 extern uint32_t pccache;
 extern uint8_t *pccache2;
 
-extern double   bus_timing, isa_timing, pci_timing, agp_timing;
+extern double   bus_timing;
+extern double   isa_timing;
+extern double   pci_timing;
+extern double   agp_timing;
 extern uint64_t pmc[2];
 extern uint16_t temp_seg_data[4];
 extern uint16_t cs_msr;
@@ -545,13 +615,16 @@ extern uint32_t esp_msr;
 extern uint32_t eip_msr;
 
 /* For the AMD K6. */
-extern uint64_t amd_efer, star;
+extern uint64_t amd_efer;
+extern uint64_t star;
 
 #define FPU_CW_Reserved_Bits (0xe0c0)
 
 #define cr0                  cpu_state.CR0.l
 #define msw                  cpu_state.CR0.w
-extern uint32_t cr2, cr3, cr4;
+extern uint32_t cr2;
+extern uint32_t cr3;
+extern uint32_t cr4;
 extern uint32_t dr[8];
 extern uint32_t _tr[8];
 extern uint32_t cache_index;
@@ -561,7 +634,10 @@ extern uint8_t  _cache[2048];
   _cs,_ds,_es,_ss are the segment structures
   CS,DS,ES,SS is the 16-bit data
   cs,ds,es,ss are defines to the bases*/
-extern x86seg gdt, ldt, idt, tr;
+extern x86seg gdt;
+extern x86seg ldt;
+extern x86seg idt;
+extern x86seg tr;
 extern x86seg _oldds;
 #define CS            cpu_state.seg_cs.seg
 #define DS            cpu_state.seg_ds.seg
@@ -578,50 +654,71 @@ extern x86seg _oldds;
 
 #define ISA_CYCLES(x) (x * isa_cycles)
 
-extern int cpu_cycles_read, cpu_cycles_read_l, cpu_cycles_write, cpu_cycles_write_l;
-extern int cpu_prefetch_cycles, cpu_prefetch_width, cpu_mem_prefetch_cycles, cpu_rom_prefetch_cycles;
+extern int cpu_cycles_read;
+extern int cpu_cycles_read_l;
+extern int cpu_cycles_write;
+extern int cpu_cycles_write_l;
+extern int cpu_prefetch_cycles;
+extern int cpu_prefetch_width;
+extern int cpu_mem_prefetch_cycles;
+extern int cpu_rom_prefetch_cycles;
 extern int cpu_waitstates;
-extern int cpu_cache_int_enabled, cpu_cache_ext_enabled;
-extern int cpu_isa_speed, cpu_pci_speed, cpu_agp_speed;
+extern int cpu_cache_int_enabled;
+extern int cpu_cache_ext_enabled;
+extern int cpu_isa_speed;
+extern int cpu_pci_speed;
+extern int cpu_agp_speed;
 
 extern int timing_rr;
-extern int timing_mr, timing_mrl;
-extern int timing_rm, timing_rml;
-extern int timing_mm, timing_mml;
-extern int timing_bt, timing_bnt;
-extern int timing_int, timing_int_rm, timing_int_v86, timing_int_pm;
-extern int timing_int_pm_outer, timing_iret_rm, timing_iret_v86, timing_iret_pm;
-extern int timing_iret_pm_outer, timing_call_rm, timing_call_pm;
-extern int timing_call_pm_gate, timing_call_pm_gate_inner;
-extern int timing_retf_rm, timing_retf_pm, timing_retf_pm_outer;
-extern int timing_jmp_rm, timing_jmp_pm, timing_jmp_pm_gate;
+extern int timing_mr;
+extern int timing_mrl;
+extern int timing_rm;
+extern int timing_rml;
+extern int timing_mm;
+extern int timing_mml;
+extern int timing_bt;
+extern int timing_bnt;
+extern int timing_int;
+extern int timing_int_rm;
+extern int timing_int_v86;
+extern int timing_int_pm;
+extern int timing_int_pm_outer;
+extern int timing_iret_rm;
+extern int timing_iret_v86;
+extern int timing_iret_pm;
+extern int timing_iret_pm_outer;
+extern int timing_call_rm;
+extern int timing_call_pm;
+extern int timing_call_pm_gate;
+extern int timing_call_pm_gate_inner;
+extern int timing_retf_rm;
+extern int timing_retf_pm;
+extern int timing_retf_pm_outer;
+extern int timing_jmp_rm;
+extern int timing_jmp_pm;
+extern int timing_jmp_pm_gate;
 extern int timing_misaligned;
 
-extern int      in_sys, unmask_a20_in_smm;
+extern int      in_sys;
+extern int      unmask_a20_in_smm;
 extern int      cycles_main;
 extern uint32_t old_rammask;
 
 #ifdef USE_ACYCS
 extern int acycs;
 #endif
-extern int pic_pending, is_vpc;
-extern int soft_reset_mask, alt_access;
+extern int pic_pending;
+extern int is_vpc;
+extern int soft_reset_mask;
+extern int alt_access;
 extern int cpu_end_block_after_ins;
 
-extern uint16_t cpu_fast_off_count, cpu_fast_off_val;
+extern uint16_t cpu_fast_off_count;
+extern uint16_t cpu_fast_off_val;
 extern uint32_t cpu_fast_off_flags;
 
 /* Functions. */
 extern int cpu_has_feature(int feature);
-
-#ifdef USE_NEW_DYNAREC
-extern void loadseg_dynarec(uint16_t seg, x86seg *s);
-extern int  loadseg(uint16_t seg, x86seg *s);
-extern void loadcs(uint16_t seg);
-#else
-extern void loadseg(uint16_t seg, x86seg *s);
-extern void loadcs(uint16_t seg);
-#endif
 
 extern char *cpu_current_pc(char *bufp);
 
@@ -637,31 +734,19 @@ extern void cpu_CPUID(void);
 extern void cpu_RDMSR(void);
 extern void cpu_WRMSR(void);
 
-extern int  checkio(uint32_t port);
+extern int  checkio(uint32_t port, int mask);
 extern void codegen_block_end(void);
 extern void codegen_reset(void);
 extern void cpu_set_edx(void);
 extern int  divl(uint32_t val);
-extern void execx86(int cycs);
+extern void execx86(int32_t cycs);
 extern void enter_smm(int in_hlt);
 extern void enter_smm_check(int in_hlt);
 extern void leave_smm(void);
-extern void exec386(int cycs);
-extern void exec386_dynarec(int cycs);
+extern void exec386_2386(int32_t cycs);
+extern void exec386(int32_t cycs);
+extern void exec386_dynarec(int32_t cycs);
 extern int  idivl(int32_t val);
-#ifdef USE_NEW_DYNAREC
-extern void loadcscall(uint16_t seg, uint32_t old_pc);
-extern void loadcsjmp(uint16_t seg, uint32_t old_pc);
-extern void pmodeint(int num, int soft);
-extern void pmoderetf(int is32, uint16_t off);
-extern void pmodeiret(int is32);
-#else
-extern void loadcscall(uint16_t seg);
-extern void loadcsjmp(uint16_t seg, uint32_t old_pc);
-extern void pmodeint(int num, int soft);
-extern void pmoderetf(int is32, uint16_t off);
-extern void pmodeiret(int is32);
-#endif
 extern void resetmcr(void);
 extern void resetx86(void);
 extern void refreshread(void);
@@ -671,11 +756,6 @@ extern void hardresetx86(void);
 extern void x86_int(int num);
 extern void x86_int_sw(int num);
 extern int  x86_int_sw_rm(int num);
-extern void x86de(char *s, uint16_t error);
-extern void x86gpf(char *s, uint16_t error);
-extern void x86np(char *s, uint16_t error);
-extern void x86ss(char *s, uint16_t error);
-extern void x86ts(char *s, uint16_t error);
 
 #ifdef ENABLE_808X_LOG
 extern void dumpregs(int __force);
@@ -683,7 +763,8 @@ extern void x87_dumpregs(void);
 extern void x87_reset(void);
 #endif
 
-extern int  cpu_effective, cpu_alt_reset;
+extern int  cpu_effective;
+extern int  cpu_alt_reset;
 extern void cpu_dynamic_switch(int new_cpu);
 
 extern void cpu_ven_reset(void);
@@ -708,30 +789,36 @@ void cyrix_write_seg_descriptor(uint32_t addr, x86seg *seg);
 #define SMHR_VALID     (1 << 0)
 #define SMHR_ADDR_MASK (0xfffffffc)
 
-typedef struct
-{
-    struct
-    {
+typedef struct {
+    struct {
         uint32_t base;
         uint64_t size;
     } arr[8];
     uint32_t smhr;
 } cyrix_t;
 
-extern uint32_t addr64, addr64_2;
-extern uint32_t addr64a[8], addr64a_2[8];
+extern uint32_t addr64;
+extern uint32_t addr64_2;
+extern uint32_t addr64a[8];
+extern uint32_t addr64a_2[8];
 
 extern int soft_reset_pci;
 
-extern int reset_on_hlt, hlt_reset_pending;
+extern int reset_on_hlt;
+extern int hlt_reset_pending;
 
 extern cyrix_t cyrix;
+
+extern int prefetch_prefixes;
 
 extern uint8_t  use_custom_nmi_vector;
 extern uint32_t custom_nmi_vector;
 
-extern void (*cpu_exec)(int cycs);
-extern uint8_t do_translate, do_translate2;
+extern void (*cpu_exec)(int32_t cycs);
+extern uint8_t do_translate;
+extern uint8_t do_translate2;
+
+extern void SF_FPU_reset(void);
 
 extern void reset_808x(int hard);
 extern void interrupt_808x(uint16_t addr);
@@ -743,5 +830,13 @@ extern void cpu_fast_off_reset(void);
 
 extern void smi_raise(void);
 extern void nmi_raise(void);
+
+extern MMX_REG  *MMP[8];
+extern uint16_t *MMEP[8];
+
+extern void mmx_init(void);
+extern void prefetch_flush(void);
+
+extern void prefetch_run(int instr_cycles, int bytes, int modrm, int reads, int reads_l, int writes, int writes_l, int ea32);
 
 #endif /*EMU_CPU_H*/

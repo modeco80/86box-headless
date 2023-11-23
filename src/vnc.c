@@ -40,19 +40,11 @@
 static rfbScreenInfoPtr rfb = NULL;
 static int              clients;
 static int              updatingSize;
-static int              allowedX,
-    allowedY;
-static int ptr_x, ptr_y, ptr_but;
-
-typedef struct {
-    int buttons;
-    int dx;
-    int dy;
-    int dwheel;
-} MOUSESTATE;
-
-static MOUSESTATE ms;
-#define ENABLE_VNC_LOG 1
+static int              allowedX;
+static int              allowedY;
+static int              ptr_x;
+static int              ptr_y;
+static int              ptr_but;
 
 #ifdef ENABLE_VNC_LOG
 int vnc_do_log = ENABLE_VNC_LOG;
@@ -83,49 +75,45 @@ vnc_kbdevent(rfbBool down, rfbKeySym k, rfbClientPtr cl)
     vnc_kbinput(down ? 1 : 0, (int) k);
 }
 
-void
-vnc_mouse_poll(void)
-{
-    static int b = 0;
-    if (ms.dx != 0 || ms.dy != 0) {
-        mouse_x += ms.dx;
-        mouse_y += ms.dy;
-
-        ms.dx     = 0;
-        ms.dy     = 0;
-
-        // pclog("dx=%d, dy=%d, dwheel=%d\n", mouse_x, mouse_y, mouse_z);
-    }
-
-    if (b != ms.buttons) {
-        mouse_buttons = ms.buttons;
-        b             = ms.buttons;
-    }
-}
-
 static void
 vnc_ptrevent(int but, int x, int y, rfbClientPtr cl)
 {
-    ms.buttons = 0;
+    int dx;
+    int dy;
+    int b;
+
+    b = 0x00;
     if (but & 0x01)
-        ms.buttons |= 0x01;
+        b |= 0x01;
     if (but & 0x02)
-        ms.buttons |= 0x04;
+        b |= 0x04;
     if (but & 0x04)
-        ms.buttons |= 0x02;
+        b |= 0x02;
+    mouse_set_buttons_ex(b);
     ptr_but = but;
 
+    dx = (x - ptr_x) / 0.96; /* TODO: Figure out the correct scale factor for X and Y. */
+    dy = (y - ptr_y) / 0.96;
+
     /* VNC uses absolute positions within the window, no deltas. */
-    ms.dx += (x - ptr_x) / 0.96; /* TODO: Figure out the correct scale factor for X and Y. */
-    ms.dy += (y - ptr_y) / 0.96;
+    mouse_scale(dx, dy);
+
     ptr_x = x;
     ptr_y = y;
+
+    mouse_x_abs = (double)ptr_x / (double)allowedX;
+    mouse_y_abs = (double)ptr_y / (double)allowedY;
+
+    if (mouse_x_abs > 1.0) mouse_x_abs = 1.0;
+    if (mouse_y_abs > 1.0) mouse_y_abs = 1.0;
+    if (mouse_x_abs < 0.0) mouse_x_abs = 0.0;
+    if (mouse_y_abs < 0.0) mouse_y_abs = 0.0;
 
     rfbDefaultPtrAddEvent(but, x, y, cl);
 }
 
 static void
-vnc_clientgone(rfbClientPtr cl)
+vnc_clientgone(UNUSED(rfbClientPtr cl))
 {
     vnc_log("VNC: client disconnected: %s\n", cl->host);
 
@@ -136,7 +124,9 @@ vnc_clientgone(rfbClientPtr cl)
         vnc_log("VNC: no clients, pausing..\n");
 
         /* Disable the mouse. */
-        // plat_mouse_capture(0);
+#if 0
+        plat_mouse_capture(0);
+#endif
         mouse_set_poll_ex(NULL);
 
         plat_pause(1);
@@ -157,22 +147,23 @@ vnc_newclient(rfbClientPtr cl)
         /* Reset the mouse. */
         ptr_x   = allowedX / 2;
         ptr_y   = allowedY / 2;
-        mouse_x = mouse_y = mouse_z = 0;
-        mouse_buttons               = 0x00;
-        memset(&ms, 0, sizeof(MOUSESTATE));
+        mouse_clear_coords();
+        mouse_clear_buttons();
 
         /* We now have clients, un-pause the emulator if needed. */
         vnc_log("VNC: unpausing..\n");
 
         /* Enable the mouse. */
-        // plat_mouse_capture(1);
+#if 0
+        plat_mouse_capture(1);
+#endif
         mouse_set_poll_ex(vnc_mouse_poll);
 
         plat_pause(0);
     }
 
     /* For now, we always accept clients. */
-    return (RFB_CLIENT_ACCEPT);
+    return RFB_CLIENT_ACCEPT;
 }
 
 static void
@@ -192,23 +183,12 @@ vnc_display(rfbClientPtr cl)
 static void
 vnc_blit(int x, int y, int w, int h, int monitor_index)
 {
-    int       row;
-
-    pclog("vnc_blit: allowed %dx%d\n", allowedX, allowedY);
-
     if (monitor_index || (x < 0) || (y < 0) || (w < VNC_MIN_X) || (h < VNC_MIN_Y) || (w > VNC_MAX_X) || (h > VNC_MAX_Y) || (buffer32 == NULL)) {
         video_blit_complete_monitor(monitor_index);
         return;
     }
 
-    if( w > rfb->width || h > rfb->height) {
-        pclog("vnc_blit: invalid blit? the blit handler is passed %dx%d\n", w, h);
-        vnc_resize(w, h);
-        video_blit_complete_monitor(monitor_index);
-        return;
-    }
-
-    for (row = 0; row < h; ++row)
+   for (int row = 0; row < h; ++row)
         video_copy(&(((uint8_t *) rfb->frameBuffer)[row * 2048 * sizeof(uint32_t)]), &(buffer32->line[y + row][x]), w * sizeof(uint32_t));
 
     if (screenshots)
@@ -277,7 +257,7 @@ vnc_init(UNUSED(void *arg))
 
     vnc_log("VNC: init complete.\n");
 
-    return (1);
+    return 1;
 }
 
 void
@@ -335,7 +315,7 @@ vnc_pause(void)
 }
 
 void
-vnc_take_screenshot(wchar_t *fn)
+vnc_take_screenshot(UNUSED(wchar_t *fn))
 {
     vnc_log("VNC: take_screenshot\n");
 }

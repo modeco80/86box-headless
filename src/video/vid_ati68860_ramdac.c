@@ -46,15 +46,19 @@
 #include <86box/mem.h>
 #include <86box/timer.h>
 #include <86box/video.h>
+#include <86box/vid_8514a.h>
 #include <86box/vid_svga.h>
 #include <86box/vid_svga_render.h>
+#include <86box/plat_unused.h>
 
 typedef struct ati68860_ramdac_t {
     uint8_t regs[16];
     void (*render)(struct svga_t *svga);
 
-    int      dac_addr, dac_pos;
-    int      dac_r, dac_g;
+    int      dac_addr;
+    int      dac_pos;
+    int      dac_r;
+    int      dac_g;
     PALETTE  pal;
     uint32_t pallook[2];
 
@@ -62,22 +66,23 @@ typedef struct ati68860_ramdac_t {
 } ati68860_ramdac_t;
 
 void
-ati68860_ramdac_out(uint16_t addr, uint8_t val, void *p, svga_t *svga)
+ati68860_ramdac_out(uint16_t addr, uint8_t val, void *priv, svga_t *svga)
 {
-    ati68860_ramdac_t *ramdac = (ati68860_ramdac_t *) p;
+    ati68860_ramdac_t *ramdac = (ati68860_ramdac_t *) priv;
+    const ibm8514_t   *dev    = (ibm8514_t *) svga->dev8514;
 
     switch (addr) {
         case 0:
-            svga_out(0x3c8, val, svga);
+            svga_out((dev && (dev->on[0] || dev->on[1])) ? 0x2ec : 0x3c8, val, svga);
             break;
         case 1:
-            svga_out(0x3c9, val, svga);
+            svga_out((dev && (dev->on[0] || dev->on[1])) ? 0x2ed : 0x3c9, val, svga);
             break;
         case 2:
-            svga_out(0x3c6, val, svga);
+            svga_out((dev && (dev->on[0] || dev->on[1])) ? 0x2ea : 0x3c6, val, svga);
             break;
         case 3:
-            svga_out(0x3c7, val, svga);
+            svga_out((dev && (dev->on[0] || dev->on[1])) ? 0x2eb : 0x3c7, val, svga);
             break;
         default:
             ramdac->regs[addr & 0xf] = val;
@@ -112,6 +117,9 @@ ati68860_ramdac_out(uint16_t addr, uint8_t val, void *p, svga_t *svga)
                                                                               video_6to8[ramdac->pal[ramdac->dac_addr].b & 0x3f]);
                             ramdac->dac_pos  = 0;
                             ramdac->dac_addr = (ramdac->dac_addr + 1) & 255;
+                            break;
+
+                        default:
                             break;
                     }
                     break;
@@ -153,29 +161,33 @@ ati68860_ramdac_out(uint16_t addr, uint8_t val, void *p, svga_t *svga)
                 case 0xc:
                     svga_set_ramdac_type(svga, (val & 1) ? RAMDAC_6BIT : RAMDAC_8BIT);
                     break;
+
+                default:
+                    break;
             }
             break;
     }
 }
 
 uint8_t
-ati68860_ramdac_in(uint16_t addr, void *p, svga_t *svga)
+ati68860_ramdac_in(uint16_t addr, void *priv, svga_t *svga)
 {
-    ati68860_ramdac_t *ramdac = (ati68860_ramdac_t *) p;
-    uint8_t            temp   = 0;
+    const ati68860_ramdac_t *ramdac = (ati68860_ramdac_t *) priv;
+    const ibm8514_t         *dev    = (ibm8514_t *) svga->dev8514;
+    uint8_t                  temp   = 0;
 
     switch (addr) {
         case 0:
-            temp = svga_in(0x3c8, svga);
+            temp = svga_in((dev && (dev->on[0] || dev->on[1])) ? 0x2ec : 0x3c8, svga);
             break;
         case 1:
-            temp = svga_in(0x3c9, svga);
+            temp = svga_in((dev && (dev->on[0] || dev->on[1])) ? 0x2ed : 0x3c9, svga);
             break;
         case 2:
-            temp = svga_in(0x3c6, svga);
+            temp = svga_in((dev && (dev->on[0] || dev->on[1])) ? 0x2ea : 0x3c6, svga);
             break;
         case 3:
-            temp = svga_in(0x3c7, svga);
+            temp = svga_in((dev && (dev->on[0] || dev->on[1])) ? 0x2eb : 0x3c7, svga);
             break;
         case 4:
         case 8:
@@ -198,15 +210,14 @@ ati68860_ramdac_in(uint16_t addr, void *p, svga_t *svga)
 }
 
 void
-ati68860_set_ramdac_type(void *p, int type)
+ati68860_set_ramdac_type(void *priv, int type)
 {
-    ati68860_ramdac_t *ramdac = (ati68860_ramdac_t *) p;
-    int                c;
+    ati68860_ramdac_t *ramdac = (ati68860_ramdac_t *) priv;
 
     if (ramdac->ramdac_type != type) {
         ramdac->ramdac_type = type;
 
-        for (c = 0; c < 2; c++) {
+        for (uint8_t c = 0; c < 2; c++) {
             if (ramdac->ramdac_type == RAMDAC_8BIT)
                 ramdac->pallook[c] = makecol32(ramdac->pal[c].r, ramdac->pal[c].g,
                                                ramdac->pal[c].b);
@@ -218,7 +229,7 @@ ati68860_set_ramdac_type(void *p, int type)
 }
 
 static void *
-ati68860_ramdac_init(const device_t *info)
+ati68860_ramdac_init(UNUSED(const device_t *info))
 {
     ati68860_ramdac_t *ramdac = (ati68860_ramdac_t *) malloc(sizeof(ati68860_ramdac_t));
     memset(ramdac, 0, sizeof(ati68860_ramdac_t));
@@ -229,17 +240,17 @@ ati68860_ramdac_init(const device_t *info)
 }
 
 void
-ati68860_ramdac_set_render(void *p, svga_t *svga)
+ati68860_ramdac_set_render(void *priv, svga_t *svga)
 {
-    ati68860_ramdac_t *ramdac = (ati68860_ramdac_t *) p;
+    ati68860_ramdac_t *ramdac = (ati68860_ramdac_t *) priv;
 
     svga->render = ramdac->render;
 }
 
 void
-ati68860_ramdac_set_pallook(void *p, int i, uint32_t col)
+ati68860_ramdac_set_pallook(void *priv, int i, uint32_t col)
 {
-    ati68860_ramdac_t *ramdac = (ati68860_ramdac_t *) p;
+    ati68860_ramdac_t *ramdac = (ati68860_ramdac_t *) priv;
 
     ramdac->pallook[i] = col;
 }
@@ -247,14 +258,14 @@ ati68860_ramdac_set_pallook(void *p, int i, uint32_t col)
 void
 ati68860_hwcursor_draw(svga_t *svga, int displine)
 {
-    ati68860_ramdac_t *ramdac = (ati68860_ramdac_t *) svga->ramdac;
-    int                x, offset;
-    uint8_t            dat;
-    uint32_t           col0 = ramdac->pallook[0];
-    uint32_t           col1 = ramdac->pallook[1];
+    const ati68860_ramdac_t *ramdac = (ati68860_ramdac_t *) svga->ramdac;
+    int                      offset;
+    uint8_t                  dat;
+    uint32_t                 col0 = ramdac->pallook[0];
+    uint32_t                 col1 = ramdac->pallook[1];
 
     offset = svga->dac_hwcursor_latch.xoff;
-    for (x = 0; x < 64 - svga->dac_hwcursor_latch.xoff; x += 4) {
+    for (uint32_t x = 0; x < 64 - svga->dac_hwcursor_latch.xoff; x += 4) {
         dat = svga->vram[svga->dac_hwcursor_latch.addr + (offset >> 2)];
         if (!(dat & 2))
             buffer32->line[displine][svga->dac_hwcursor_latch.x + x + svga->x_add] = (dat & 1) ? col1 : col0;

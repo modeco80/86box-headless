@@ -27,6 +27,8 @@
 #include <86box/timer.h>
 #include <86box/machine.h>
 #include <86box/nvr.h>
+#include <86box/plat_fallthrough.h>
+#include <86box/plat_unused.h>
 #include "cpu.h"
 #include <86box/i2c.h>
 #include <86box/hwm.h>
@@ -48,7 +50,7 @@
 #define LM78_NEG_VOLTAGE(v, r)  (v * (604.0 / ((double) r)))                                /* negative voltage formula from the W83781D datasheet */
 #define LM78_NEG_VOLTAGE2(v, r) (((3600 + v) * (((double) r) / (((double) r) + 56.0))) - v) /* negative voltage formula from the W83782D datasheet */
 
-typedef struct {
+typedef struct lm78_t {
     uint32_t      local;
     hwm_values_t *values;
     device_t     *lm75[2];
@@ -56,10 +58,10 @@ typedef struct {
 
     uint8_t regs[256];
     union {
-        struct {
+        struct w83782d {
             uint8_t regs[2][16];
         } w83782d;
-        struct {
+        struct as99127f {
             uint8_t regs[3][128];
 
             uint8_t  nvram[1024], nvram_i2c_state : 2, nvram_updated : 1;
@@ -69,9 +71,12 @@ typedef struct {
             uint8_t security_i2c_state : 1, security_addr_register : 7;
         } as99127f;
     };
-    uint8_t addr_register, data_register;
+    uint8_t addr_register;
+    uint8_t data_register;
 
-    uint8_t i2c_addr : 7, i2c_state : 1, i2c_enabled : 1;
+    uint8_t i2c_addr : 7;
+    uint8_t i2c_state : 1;
+    uint8_t i2c_enabled : 1;
 } lm78_t;
 
 static void lm78_remap(lm78_t *dev, uint8_t addr);
@@ -101,20 +106,20 @@ lm78_nvram(lm78_t *dev, uint8_t save)
     char  *nvr_path = (char *) malloc(l);
     sprintf(nvr_path, "%s_as99127f.nvr", machine_get_internal_name_ex(machine));
 
-    FILE *f = nvr_fopen(nvr_path, save ? "wb" : "rb");
-    if (f) {
+    FILE *fp = nvr_fopen(nvr_path, save ? "wb" : "rb");
+    if (fp) {
         if (save)
-            fwrite(&dev->as99127f.nvram, sizeof(dev->as99127f.nvram), 1, f);
+            fwrite(&dev->as99127f.nvram, sizeof(dev->as99127f.nvram), 1, fp);
         else
-            (void) !fread(&dev->as99127f.nvram, sizeof(dev->as99127f.nvram), 1, f);
-        fclose(f);
+            (void) !fread(&dev->as99127f.nvram, sizeof(dev->as99127f.nvram), 1, fp);
+        fclose(fp);
     }
 
     free(nvr_path);
 }
 
 static uint8_t
-lm78_nvram_start(void *bus, uint8_t addr, uint8_t read, void *priv)
+lm78_nvram_start(UNUSED(void *bus), UNUSED(uint8_t addr), UNUSED(uint8_t read), void *priv)
 {
     lm78_t *dev = (lm78_t *) priv;
 
@@ -124,7 +129,7 @@ lm78_nvram_start(void *bus, uint8_t addr, uint8_t read, void *priv)
 }
 
 static uint8_t
-lm78_nvram_read(void *bus, uint8_t addr, void *priv)
+lm78_nvram_read(UNUSED(void *bus), UNUSED(uint8_t addr), void *priv)
 {
     lm78_t *dev = (lm78_t *) priv;
     uint8_t ret = 0xff;
@@ -132,7 +137,7 @@ lm78_nvram_read(void *bus, uint8_t addr, void *priv)
     switch (dev->as99127f.nvram_i2c_state) {
         case 0:
             dev->as99127f.nvram_i2c_state = 1;
-            /* fall-through */
+            fallthrough;
 
         case 1:
             ret = dev->as99127f.regs[0][0x0b] & 0x3f;
@@ -158,7 +163,7 @@ lm78_nvram_read(void *bus, uint8_t addr, void *priv)
 }
 
 static uint8_t
-lm78_nvram_write(void *bus, uint8_t addr, uint8_t val, void *priv)
+lm78_nvram_write(UNUSED(void *bus), uint8_t addr, uint8_t val, void *priv)
 {
     lm78_t *dev = (lm78_t *) priv;
 
@@ -195,7 +200,7 @@ lm78_nvram_write(void *bus, uint8_t addr, uint8_t val, void *priv)
 }
 
 static uint8_t
-lm78_security_start(void *bus, uint8_t addr, uint8_t read, void *priv)
+lm78_security_start(UNUSED(void *bus), UNUSED(uint8_t addr), UNUSED(uint8_t read), void *priv)
 {
     lm78_t *dev = (lm78_t *) priv;
 
@@ -205,7 +210,7 @@ lm78_security_start(void *bus, uint8_t addr, uint8_t read, void *priv)
 }
 
 static uint8_t
-lm78_security_read(void *bus, uint8_t addr, void *priv)
+lm78_security_read(UNUSED(void *bus), UNUSED(uint8_t addr), void *priv)
 {
     lm78_t *dev = (lm78_t *) priv;
 
@@ -213,7 +218,7 @@ lm78_security_read(void *bus, uint8_t addr, void *priv)
 }
 
 static uint8_t
-lm78_security_write(void *bus, uint8_t addr, uint8_t val, void *priv)
+lm78_security_write(UNUSED(void *bus), UNUSED(uint8_t addr), uint8_t val, void *priv)
 {
     lm78_t *dev = (lm78_t *) priv;
 
@@ -229,6 +234,8 @@ lm78_security_write(void *bus, uint8_t addr, uint8_t val, void *priv)
             case 0xe7:
                 /* read-only registers */
                 return 1;
+            default:
+                break;
         }
 
         dev->as99127f.regs[2][dev->as99127f.security_addr_register++] = val;
@@ -316,7 +323,7 @@ lm78_reset(void *priv)
 }
 
 static uint8_t
-lm78_i2c_start(void *bus, uint8_t addr, uint8_t read, void *priv)
+lm78_i2c_start(UNUSED(void *bus), UNUSED(uint8_t addr), UNUSED(uint8_t read), void *priv)
 {
     lm78_t *dev = (lm78_t *) priv;
 
@@ -328,7 +335,9 @@ lm78_i2c_start(void *bus, uint8_t addr, uint8_t read, void *priv)
 static uint8_t
 lm78_read(lm78_t *dev, uint8_t reg, uint8_t bank)
 {
-    uint8_t ret = 0, masked_reg = reg, bankswitched = ((reg & 0xf8) == 0x50);
+    uint8_t ret = 0;
+    uint8_t masked_reg = reg;
+    uint8_t bankswitched = ((reg & 0xf8) == 0x50);
     lm75_t *lm75;
 
     if ((dev->local & LM78_AS99127F) && (bank == 3) && (reg != 0x4e)) {
@@ -403,7 +412,7 @@ lm78_isa_read(uint16_t port, void *priv)
 }
 
 static uint8_t
-lm78_i2c_read(void *bus, uint8_t addr, void *priv)
+lm78_i2c_read(UNUSED(void *bus), UNUSED(uint8_t addr), void *priv)
 {
     lm78_t *dev = (lm78_t *) priv;
 
@@ -413,8 +422,8 @@ lm78_i2c_read(void *bus, uint8_t addr, void *priv)
 uint8_t
 lm78_as99127f_read(void *priv, uint8_t reg)
 {
-    lm78_t *dev = (lm78_t *) priv;
-    uint8_t ret = dev->as99127f.regs[1][reg & 0x7f];
+    const lm78_t *dev = (lm78_t *) priv;
+    uint8_t       ret = dev->as99127f.regs[1][reg & 0x7f];
 
     lm78_log("LM78: read(%02X, AS99127F) = %02X\n", reg, ret);
 
@@ -443,6 +452,8 @@ lm78_write(lm78_t *dev, uint8_t reg, uint8_t val, uint8_t bank)
 
             case 0x20:
                 val &= 0x7f;
+                break;
+            default:
                 break;
         }
 
@@ -475,6 +486,8 @@ lm78_write(lm78_t *dev, uint8_t reg, uint8_t val, uint8_t bank)
                     case 0x5f:
                         /* read-only registers */
                         return 0;
+                    default:
+                        break;
                 }
 
                 dev->w83782d.regs[0][reg & 0x0f] = val;
@@ -495,6 +508,8 @@ lm78_write(lm78_t *dev, uint8_t reg, uint8_t val, uint8_t bank)
                     case 0x5f:
                         /* read-only registers */
                         return 0;
+                    default:
+                        break;
                 }
 
                 dev->w83782d.regs[1][reg & 0x0f] = val;
@@ -557,6 +572,8 @@ lm78_write(lm78_t *dev, uint8_t reg, uint8_t val, uint8_t bank)
             if (!(dev->local & LM78_WINBOND))
                 return 0;
             break;
+        default:
+            break;
     }
 
     if ((reg >= 0x60) && (reg <= 0x94)) /* write auto-increment value RAM registers to their non-auto-increment locations */
@@ -611,6 +628,9 @@ lm78_write(lm78_t *dev, uint8_t reg, uint8_t val, uint8_t bank)
                     i2c_sethandler(i2c_smbus, (val & 0xf8) >> 1, 4, lm78_nvram_start, lm78_nvram_read, lm78_nvram_write, NULL, dev);
             }
             break;
+
+        default:
+            break;
     }
 
     return 1;
@@ -642,7 +662,7 @@ lm78_isa_write(uint16_t port, uint8_t val, void *priv)
 }
 
 static uint8_t
-lm78_i2c_write(void *bus, uint8_t addr, uint8_t val, void *priv)
+lm78_i2c_write(UNUSED(void *bus), UNUSED(uint8_t addr), uint8_t val, void *priv)
 {
     lm78_t *dev = (lm78_t *) priv;
 
@@ -692,13 +712,16 @@ lm78_as99127f_write(void *priv, uint8_t reg, uint8_t val)
                 resetx86();
             }
             break;
+
+        default:
+            break;
     }
 
     return 1;
 }
 
 static void
-lm78_reset_timer(void *priv)
+lm78_reset_timer(UNUSED(void *priv))
 {
     pc_reset_hard();
 }

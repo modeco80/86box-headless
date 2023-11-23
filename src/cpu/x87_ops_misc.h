@@ -34,6 +34,28 @@ opFNOP(uint32_t fetchdat)
 }
 
 static int
+opFXTRACT(uint32_t fetchdat)
+{
+    x87_conv_t test;
+    int64_t    exp80;
+    int64_t    exp80final;
+    double     mant;
+
+    FP_ENTER();
+    cpu_state.pc++;
+    test.eind.d = ST(0);
+    exp80       = test.eind.ll & 0x7ff0000000000000LL;
+    exp80final  = (exp80 >> 52) - BIAS64;
+    mant        = test.eind.d / (pow(2.0, (double) exp80final));
+    ST(0)       = (double) exp80final;
+    FP_TAG_VALID;
+    x87_push(mant);
+    CLOCK_CYCLES_FPU((fpu_type >= FPU_487SX) ? (x87_timings.fxtract) : (x87_timings.fxtract * cpu_multi));
+    CONCURRENCY_CYCLES((fpu_type >= FPU_487SX) ? (x87_concurrency.fxtract) : (x87_concurrency.fxtract * cpu_multi));
+    return 0;
+}
+
+static int
 opFCLEX(uint32_t fetchdat)
 {
     FP_ENTER();
@@ -61,7 +83,7 @@ opFINIT(uint32_t fetchdat)
 #ifdef USE_NEW_DYNAREC
     *p = 0;
 #else
-    *p                                            = 0x0303030303030303ll;
+    *p                                            = 0x0303030303030303LL;
 #endif
     cpu_state.TOP   = 0;
     cpu_state.ismmx = 0;
@@ -171,7 +193,7 @@ FSTOR(void)
       something like this is needed*/
     p = (uint64_t *) cpu_state.tag;
 #ifdef USE_NEW_DYNAREC
-    if (cpu_state.MM_w4[0] == 0xffff && cpu_state.MM_w4[1] == 0xffff && cpu_state.MM_w4[2] == 0xffff && cpu_state.MM_w4[3] == 0xffff && cpu_state.MM_w4[4] == 0xffff && cpu_state.MM_w4[5] == 0xffff && cpu_state.MM_w4[6] == 0xffff && cpu_state.MM_w4[7] == 0xffff && !cpu_state.TOP && (*p == 0x0101010101010101ull))
+    if (cpu_state.MM_w4[0] == 0xffff && cpu_state.MM_w4[1] == 0xffff && cpu_state.MM_w4[2] == 0xffff && cpu_state.MM_w4[3] == 0xffff && cpu_state.MM_w4[4] == 0xffff && cpu_state.MM_w4[5] == 0xffff && cpu_state.MM_w4[6] == 0xffff && cpu_state.MM_w4[7] == 0xffff && !cpu_state.TOP && (*p == 0x0101010101010101ULL))
 #else
     if (cpu_state.MM_w4[0] == 0xffff && cpu_state.MM_w4[1] == 0xffff && cpu_state.MM_w4[2] == 0xffff && cpu_state.MM_w4[3] == 0xffff && cpu_state.MM_w4[4] == 0xffff && cpu_state.MM_w4[5] == 0xffff && cpu_state.MM_w4[6] == 0xffff && cpu_state.MM_w4[7] == 0xffff && !cpu_state.TOP && !(*p))
 #endif
@@ -389,7 +411,7 @@ FSAVE(void)
 #ifdef USE_NEW_DYNAREC
     *p = 0;
 #else
-    *p = 0x0303030303030303ll;
+    *p = 0x0303030303030303LL;
 #endif
     cpu_state.TOP   = 0;
     cpu_state.ismmx = 0;
@@ -608,7 +630,7 @@ opFLDLN2(uint32_t fetchdat)
 {
     FP_ENTER();
     cpu_state.pc++;
-    x87_push_u64(0x3fe62e42fefa39f0ull);
+    x87_push_u64(0x3fe62e42fefa39f0ULL);
     CLOCK_CYCLES_FPU((fpu_type >= FPU_487SX) ? (x87_timings.fld_const) : (x87_timings.fld_const * cpu_multi));
     CONCURRENCY_CYCLES((fpu_type >= FPU_487SX) ? (x87_concurrency.fld_const) : (x87_concurrency.fld_const * cpu_multi));
     return 0;
@@ -741,7 +763,7 @@ opFPREM(uint32_t fetchdat)
     CONCURRENCY_CYCLES((fpu_type >= FPU_487SX) ? (x87_concurrency.fprem) : (x87_concurrency.fprem * cpu_multi));
     return 0;
 }
-#ifndef FPU_8087
+
 static int
 opFPREM1(uint32_t fetchdat)
 {
@@ -762,7 +784,6 @@ opFPREM1(uint32_t fetchdat)
     CONCURRENCY_CYCLES((fpu_type >= FPU_487SX) ? (x87_concurrency.fprem1) : (x87_concurrency.fprem1 * cpu_multi));
     return 0;
 }
-#endif
 
 static int
 opFSQRT(uint32_t fetchdat)
@@ -797,9 +818,12 @@ opFSINCOS(uint32_t fetchdat)
 static int
 opFRNDINT(uint32_t fetchdat)
 {
+    double dst0;
+
     FP_ENTER();
     cpu_state.pc++;
-    ST(0) = (double) x87_fround(ST(0));
+    dst0 = x87_fround(ST(0));
+    ST(0) = (double) dst0;
     FP_TAG_VALID;
     CLOCK_CYCLES_FPU((fpu_type >= FPU_487SX) ? (x87_timings.frndint) : (x87_timings.frndint * cpu_multi));
     CONCURRENCY_CYCLES((fpu_type >= FPU_487SX) ? (x87_concurrency.frndint) : (x87_concurrency.frndint * cpu_multi));
@@ -1025,22 +1049,23 @@ opFSTCW_a32(uint32_t fetchdat)
 #endif
 
 #ifndef FPU_8087
-#    define opFCMOV(condition)                                                                      \
-        static int opFCMOV##condition(uint32_t fetchdat)                                            \
-        {                                                                                           \
-            FP_ENTER();                                                                             \
-            cpu_state.pc++;                                                                         \
-            if (cond_##condition) {                                                                 \
-                cpu_state.tag[cpu_state.TOP & 7]  = cpu_state.tag[(cpu_state.TOP + fetchdat) & 7];  \
-                cpu_state.MM[cpu_state.TOP & 7].q = cpu_state.MM[(cpu_state.TOP + fetchdat) & 7].q; \
-                ST(0)                             = ST(fetchdat & 7);                               \
-            }                                                                                       \
-            CLOCK_CYCLES_FPU(4);                                                                    \
-            return 0;                                                                               \
-        }
+#    ifndef OPS_286_386
+#        define opFCMOV(condition)                                                                      \
+            static int opFCMOV##condition(uint32_t fetchdat)                                            \
+            {                                                                                           \
+                FP_ENTER();                                                                             \
+                cpu_state.pc++;                                                                         \
+                if (cond_##condition) {                                                                 \
+                    cpu_state.tag[cpu_state.TOP & 7]  = cpu_state.tag[(cpu_state.TOP + fetchdat) & 7];  \
+                    cpu_state.MM[cpu_state.TOP & 7].q = cpu_state.MM[(cpu_state.TOP + fetchdat) & 7].q; \
+                    ST(0)                             = ST(fetchdat & 7);                               \
+                }                                                                                       \
+                CLOCK_CYCLES_FPU(4);                                                                    \
+                return 0;                                                                               \
+            }
 
-#    define cond_U  (PF_SET())
-#    define cond_NU (!PF_SET())
+#        define cond_U  (PF_SET())
+#        define cond_NU (!PF_SET())
 
 // clang-format off
 opFCMOV(B)
@@ -1052,4 +1077,5 @@ opFCMOV(NE)
 opFCMOV(NBE)
 opFCMOV(NU)
 // clang-format on
+#    endif
 #endif

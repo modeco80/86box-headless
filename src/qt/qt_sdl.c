@@ -78,10 +78,14 @@
 static SDL_Window   *sdl_win    = NULL;
 static SDL_Renderer *sdl_render = NULL;
 static SDL_Texture  *sdl_tex    = NULL;
-static int           sdl_w, sdl_h;
-static int           sdl_fs, sdl_flags = -1;
-static int           cur_w, cur_h;
-static int           cur_ww = 0, cur_wh = 0;
+static int           sdl_w;
+static int           sdl_h;
+static int           sdl_fs;
+static int           sdl_flags = -1;
+static int           cur_w;
+static int           cur_h;
+static int           cur_ww = 0;
+static int           cur_wh = 0;
 static volatile int  sdl_enabled = 0;
 static SDL_mutex    *sdl_mutex   = NULL;
 
@@ -194,12 +198,6 @@ static const uint16_t sdl_to_xt[0x200] = {
     [SDL_SCANCODE_NONUSBACKSLASH] = 0x56,
 };
 
-typedef struct mouseinputdata {
-    int deltax, deltay, deltaz;
-    int mousebuttons;
-} mouseinputdata;
-static mouseinputdata mousedata;
-
 // #define ENABLE_SDL_LOG 3
 #ifdef ENABLE_SDL_LOG
 int sdl_do_log = ENABLE_SDL_LOG;
@@ -236,7 +234,16 @@ sdl_integer_scale(double *d, double *g)
 static void
 sdl_stretch(int *w, int *h, int *x, int *y)
 {
-    double hw, gw, hh, gh, dx, dy, dw, dh, gsr, hsr;
+    double hw;
+    double gw;
+    double hh;
+    double gh;
+    double dx;
+    double dy;
+    double dw;
+    double dh;
+    double gsr;
+    double hsr;
 
     hw  = (double) sdl_w;
     hh  = (double) sdl_h;
@@ -298,7 +305,8 @@ sdl_blit(int x, int y, int w, int h)
 {
     SDL_Rect r_src;
     void    *pixeldata;
-    int      ret, pitch;
+    int      ret;
+    int      pitch;
 
     if (!sdl_enabled || (x < 0) || (y < 0) || (w <= 0) || (h <= 0) || (w > 2048) || (h > 2048) || (buffer32 == NULL) || (sdl_render == NULL) || (sdl_tex == NULL)) {
         video_blit_complete();
@@ -385,10 +393,9 @@ sdl_close(void)
 static void
 sdl_select_best_hw_driver(void)
 {
-    int              i;
     SDL_RendererInfo renderInfo;
 
-    for (i = 0; i < SDL_GetNumRenderDrivers(); ++i) {
+    for (int i = 0; i < SDL_GetNumRenderDrivers(); ++i) {
         SDL_GetRenderDriverInfo(i, &renderInfo);
         if (renderInfo.flags & SDL_RENDERER_ACCELERATED) {
             SDL_SetHint(SDL_HINT_RENDER_DRIVER, renderInfo.name);
@@ -408,7 +415,7 @@ sdl_init_texture(void)
     }
 
     sdl_tex = SDL_CreateTexture(sdl_render, SDL_PIXELFORMAT_ARGB8888,
-                                SDL_TEXTUREACCESS_STREAMING, (2048), (2048));
+                                SDL_TEXTUREACCESS_STREAMING, 2048, 2048);
 
     if (sdl_render == NULL) {
         sdl_log("SDL: unable to SDL_CreateRenderer (%s)\n", SDL_GetError());
@@ -520,13 +527,14 @@ sdl_initho(void *win)
 int
 sdl_pause(void)
 {
-    return (0);
+    return 0;
 }
 
 void
 sdl_resize(int w, int h)
 {
-    int ww = 0, wh = 0;
+    int ww = 0;
+    int wh = 0;
 
     if (video_fullscreen & 2)
         return;
@@ -606,22 +614,20 @@ sdl_main()
                             event.wheel.x *= -1;
                             event.wheel.y *= -1;
                         }
-                        mousedata.deltaz = event.wheel.y;
+                        mouse_set_z(event.wheel.y);
                     }
                     break;
                 }
             case SDL_MOUSEMOTION:
                 {
-                    if (mouse_capture || video_fullscreen) {
-                        mousedata.deltax += event.motion.xrel;
-                        mousedata.deltay += event.motion.yrel;
-                    }
+                    if (mouse_capture || video_fullscreen)
+                        mouse_scale(event.motion.xrel, event.motion.yrel);
                     break;
                 }
             case SDL_MOUSEBUTTONDOWN:
             case SDL_MOUSEBUTTONUP:
                 {
-                    if ((event.button.button == SDL_BUTTON_LEFT)
+                    if (!dopause && (event.button.button == SDL_BUTTON_LEFT)
                         && !(mouse_capture || video_fullscreen)
                         && event.button.state == SDL_RELEASED
                         && mouse_inside) {
@@ -646,10 +652,10 @@ sdl_main()
                                 buttonmask = 4;
                                 break;
                         }
-                        if (event.button.state == SDL_PRESSED) {
-                            mousedata.mousebuttons |= buttonmask;
-                        } else
-                            mousedata.mousebuttons &= ~buttonmask;
+                        if (event.button.state == SDL_PRESSED)
+                            mouse_set_buttons_ex(mouse_get_buttons_ex() | buttonmask);
+                        else
+                            mouse_set_buttons_ex(mouse_get_buttons_ex() & ~buttonmask);
                     }
                     break;
                 }
@@ -699,14 +705,4 @@ void
 sdl_mouse_capture(int on)
 {
     SDL_SetRelativeMouseMode((SDL_bool) on);
-}
-
-void
-sdl_mouse_poll()
-{
-    mouse_x          = mousedata.deltax;
-    mouse_y          = mousedata.deltay;
-    mouse_z          = mousedata.deltaz;
-    mousedata.deltax = mousedata.deltay = mousedata.deltaz = 0;
-    mouse_buttons                                          = mousedata.mousebuttons;
 }
