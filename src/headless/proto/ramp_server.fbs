@@ -1,0 +1,30 @@
+namespace ramp.proto;
+
+// Server->Client
+
+// TODO: We only support one screen at the moment
+
+table ServerBlitMessage {
+    x: uint16;
+    y: uint16;
+    data: [ubyte] (required);
+}
+
+table ServerScreenSizeMessage {
+    width: uint16;
+    height: uint16;
+}
+
+// TODO: Define this betterer like so:
+//table ServerAudioDataMessage {
+//    data: [ubyte] (required);
+//}
+
+table ServerMessage {
+    blit: ServerBlitMessage;
+    size: ServerScreenSizeMessage;
+
+    // TODO: Probably a "audio state" message too
+    // This is not (required) since it's a "variant"
+    audio: [ubyte];
+}

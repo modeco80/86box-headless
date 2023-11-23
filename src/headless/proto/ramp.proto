@@ -4,6 +4,8 @@
 // Messages marked with a // STABLE comment are stable (their data layout is not expected to change)
 // If messages are not marked with such their data layout may change
 
+// This file isn't in the build anymore. flatbuffers FTW
+
 syntax = "proto3";
 option optimize_for = LITE_RUNTIME; // We don't need any reflection fluff
 package ramp.proto;

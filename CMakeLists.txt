@@ -169,6 +169,7 @@ if(HEADLESS)
 
     # Turn off useless features we don't need
     set(VNC OFF)
+    set(QT OFF)
     set(DINPUT OFF)
     set(DISCORD OFF)
 
@@ -179,9 +180,6 @@ if(HEADLESS)
 
     # Tell code to enable RAMP
     set(RAMP ON)
-
-    # Add required things for ramp
-    find_package(Protobuf CONFIG REQUIRED)
 endif()
 
 # Ditto but for Qt

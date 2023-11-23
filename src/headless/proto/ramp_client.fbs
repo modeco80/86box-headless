@@ -1,0 +1,19 @@
+namespace ramp.proto;
+
+table ClientMouseMsg {
+    x: uint16;
+    y: uint16;
+    buttons: ubyte;
+}
+
+table ClientKeyMsg {
+    keysym: uint32;
+    pressed: bool;
+}
+
+table ClientMessage {
+    mouse: ClientMouseMsg;
+    key: ClientKeyMsg;
+}
+
+root_type ClientMessage;

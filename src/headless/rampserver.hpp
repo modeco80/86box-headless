@@ -2,6 +2,7 @@
 #include <functional>
 #include <cstdint>
 #include <string>
+#include <memory>
 
 using u8 = std::uint8_t;
 using s8 = std::int8_t;
@@ -50,7 +51,7 @@ namespace ramp {
 	
 	private:
         struct Impl;
-        Impl* impl;
+        std::unique_ptr<Impl> impl;
 	};
 
 }

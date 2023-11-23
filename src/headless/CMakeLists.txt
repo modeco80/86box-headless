@@ -14,7 +14,18 @@
 #          Copyright 2021      Cacodemon345.
 #          Copyright 2021      David Hrdlička.
 #
-add_library(plat OBJECT headless.c
+
+
+# Add required things for ramp
+find_package(Boost REQUIRED)
+
+# Flatbuffers
+set(FLATBUFFERS_INSTALL OFF)
+set(FLATBUFFERS_BUILD_TESTS OFF)
+add_subdirectory(flatbuffers)
+
+add_library(plat OBJECT 
+        headless.c
         headless_path.cpp
         headless_fs.cpp
         headless_dynld.cpp
@@ -27,23 +38,23 @@ add_library(plat OBJECT headless.c
         rampsound.cpp
         )
 
-# TODO: protobuf does Not seem to work for some reason
-# might just give up and use flatbuffers since it seems like a better idea
-#add_library(ramp-proto OBJECT "${PROJECT_SOURCE_DIR}/src/headless/proto/ramp.proto")
-#protobuf_generate(
-#    TARGET ramp-proto
-#    IMPORT_DIRS "${PROJECT_SOURCE_DIR}/src/headless/proto"
-#    PROTOC_OUT_DIR "${PROJECT_BINARY_DIR}/generated"
-#)
 
-#target_link_libraries(plat PUBLIC 
-#    protobuf::libprotobuf-lite
-#    ramp-proto
-#)
+flatbuffers_generate_headers(
+	TARGET ramp_proto_generated
+	SCHEMAS ${CMAKE_CURRENT_LIST_DIR}/proto/ramp_client.fbs ${CMAKE_CURRENT_LIST_DIR}/proto/ramp_server.fbs
+	FLAGS --cpp-std c++17 --cpp-field-case-style lower --scoped-enums --filename-ext hpp
+)
 
-#target_include_directories(plat PRIVATE
-#    ${PROJECT_BINARY_DIR}
-#)
+target_link_libraries(plat PRIVATE 
+    Boost::headers # For ASIO
+    FlatBuffers::FlatBuffers
+    ramp_proto_generated
+)
+
+target_include_directories(plat PRIVATE 
+    ${CMAKE_CURRENT_BINARY_DIR}
+)
+
 
 if (NOT CPPTHREADS)
     message(FATAL_ERROR "headless only compiles with CPPTHREADS=ON")

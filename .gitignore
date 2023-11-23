@@ -59,3 +59,5 @@ CMakeLists.txt.user
 
 # MacOS Finder stuff
 .DS_Store
+
+.cache
