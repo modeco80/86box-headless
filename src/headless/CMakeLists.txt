@@ -26,6 +26,9 @@ add_subdirectory(flatbuffers)
 
 add_library(plat OBJECT 
         headless.cpp
+
+        # Headless platform functions
+        headless_mmap.cpp
         headless_path.cpp
         headless_netsocket.cpp
         headless_fs.cpp

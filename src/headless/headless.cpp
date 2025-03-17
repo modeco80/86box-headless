@@ -1,20 +1,8 @@
-#include <stdlib.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <string.h>
-#include <time.h>
-#include <sys/time.h>
-#include <sys/param.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
-#include <unistd.h>
-#include <errno.h>
-#include <inttypes.h>
-#include <dlfcn.h>
-#include <wchar.h>
-#include <pwd.h>
-#include <stdatomic.h>
+#include <cstdlib>
+#include <cstdio>
+#include <cstring>
+#include <ctime>
+#include <cstdint>
 
 #include <86box/86box.h>
 
@@ -36,53 +24,30 @@
 #include <86box/gdbstub.h>
 
 extern "C" {
-    #include <86box/nvr.h>
+#include <86box/nvr.h>
 }
 
 #include "util/highprec_timer.hpp"
 
 extern "C" {
 
-int             rctrl_is_lalt;
-
+int rctrl_is_lalt;
 
 plat_joystick_t plat_joystick_state[MAX_PLAT_JOYSTICKS];
 joystick_t      joystick_state[GAMEPORT_MAX][MAX_JOYSTICKS];
 int             joysticks_present;
 
-static int      exit_event         = 0;
-static int      fullscreen_pending = 0;
+static int exit_event         = 0;
+static int fullscreen_pending = 0;
 
-uint32_t        lang_id = 0x0409, lang_sys = 0x0409; // Multilangual UI variables, for now all set to LCID of en-US
-char            icon_set[256] = "";                  /* name of the iconset to be used */
+uint32_t lang_id = 0x0409, lang_sys = 0x0409; // Multilangual UI variables, for now all set to LCID of en-US
+char     icon_set[256] = "";                  /* name of the iconset to be used */
 
-mutex_t* blit_mutex;
-
+mutex_t *blit_mutex;
 
 // Starts the RAMP server and blocks the main thread.
 void ramp_server_start(void);
 void ramp_server_stop(void);
-
-
-// new source file TODO
-
-void *
-plat_mmap(size_t size, uint8_t executable)
-{
-#if defined __APPLE__ && defined MAP_JIT
-    void *ret = mmap(0, size, PROT_READ | PROT_WRITE | (executable ? PROT_EXEC : 0), MAP_ANON | MAP_PRIVATE | (executable ? MAP_JIT : 0), -1, 0);
-#else
-    void *ret                    = mmap(0, size, PROT_READ | PROT_WRITE | (executable ? PROT_EXEC : 0), MAP_ANON | MAP_PRIVATE, -1, 0);
-#endif
-    return (ret == MAP_FAILED) ? NULL : ret;
-}
-
-void
-plat_munmap(void *ptr, size_t size)
-{
-    munmap(ptr, size);
-}
-
 
 void
 plat_power_off(void)
@@ -136,14 +101,12 @@ plat_language_code_r(uint32_t lcid, char *outbuf, int len)
     /* or maybe not */
     return;
 }
-
 }
 
 // TODO: A lockfree spsc queue here which is run on the emulator thread
 // to call functions on it (to avoid any issues)
 
 volatile int cpu_thread_run = 1;
-
 
 void
 main_thread(void *param)
@@ -229,7 +192,6 @@ do_stop(void)
     endblit();
 }
 
-
 void
 joystick_init(void)
 {
@@ -257,7 +219,6 @@ endblit(void)
     thread_release_mutex(blit_mutex);
 }
 
-
 int
 main(int argc, char **argv)
 {
@@ -265,7 +226,7 @@ main(int argc, char **argv)
     pc_init(argc, argv);
     if (!pc_init_modules()) {
         // this sucks but I don't make the rules.
-        ui_msgbox_header(MBX_FATAL, (void*)L"No ROMs found.", (void*)L"86Box could not find any usable ROM images.\n\nPlease download a ROM set and extract it into the \"roms\" directory.");
+        ui_msgbox_header(MBX_FATAL, (void *) L"No ROMs found.", (void *) L"86Box could not find any usable ROM images.\n\nPlease download a ROM set and extract it into the \"roms\" directory.");
         return 6;
     }
 
@@ -281,9 +242,8 @@ main(int argc, char **argv)
     // Start RAMP. This will block until the PC stops
     ramp_server_start();
 
-    while(1)
+    while (1)
         sleep(1);
 
     return 0;
 }
-
