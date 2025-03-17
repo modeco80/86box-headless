@@ -5,6 +5,8 @@
 #include <cstring>
 #include <cstdint>
 
+#include <pthread.h>
+
 extern "C" {
 
 int
@@ -72,6 +74,40 @@ void
 plat_serpt_set_params(void *priv) 
 {
     return;
+}
+
+void
+plat_get_cpu_string(char *outbuf, uint8_t len) {
+    char cpu_string[] = "Fucker Google CPU HD Editions";
+
+    strncpy(outbuf, cpu_string, len);
+}
+
+
+void
+plat_set_thread_name(void *thread, const char *name)
+{
+#ifdef __APPLE__
+    if (thread) /* Apple pthread can only set self's name */
+        return;
+    char truncated[64];
+#elif defined(__NetBSD__)
+    char truncated[64];
+#elif defined(__HAIKU__)
+    char truncated[32];
+#else
+    char truncated[16];
+#endif
+    strncpy(truncated, name, sizeof(truncated) - 1);
+#ifdef __APPLE__
+    pthread_setname_np(truncated);
+#elif defined(__NetBSD__)
+    pthread_setname_np(thread ? *((pthread_t *) thread) : pthread_self(), truncated, "%s");
+#elif defined(__HAIKU__)
+    rename_thread(find_thread(NULL), truncated);
+#else
+    pthread_setname_np(thread ? *((pthread_t *) thread) : pthread_self(), truncated);
+#endif
 }
 
 }

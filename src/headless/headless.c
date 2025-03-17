@@ -28,6 +28,7 @@
 #include <86box/thread.h>
 #include <86box/device.h>
 #include <86box/gameport.h>
+#include "cpu.h"
 #include <86box/timer.h>
 #include <86box/nvr.h>
 #include <86box/video.h>
@@ -38,7 +39,7 @@ int             rctrl_is_lalt;
 
 
 plat_joystick_t plat_joystick_state[MAX_PLAT_JOYSTICKS];
-joystick_t      joystick_state[MAX_JOYSTICKS];
+joystick_t      joystick_state[GAMEPORT_MAX][MAX_JOYSTICKS];
 int             joysticks_present;
 
 static int      exit_event         = 0;
@@ -54,53 +55,45 @@ mutex_t* blit_mutex;
 void ramp_server_start(void);
 void ramp_server_stop(void);
 
+
 wchar_t *
 plat_get_string(int i)
 {
     switch (i) {
-        case IDS_2077:
+        case STRING_MOUSE_CAPTURE:
             return L"Click to capture mouse";
-        case IDS_2078:
+        case STRING_MOUSE_RELEASE:
             return L"Press CTRL-END to release mouse";
-        case IDS_2079:
+        case STRING_MOUSE_RELEASE_MMB:
             return L"Press CTRL-END or middle button to release mouse";
-//        case IDS_2080:
-//            return L"Failed to initialize FluidSynth";
-        case IDS_2131:
+        case STRING_INVALID_CONFIG:
             return L"Invalid configuration";
-        case IDS_4099:
+        case STRING_NO_ST506_ESDI_CDROM:
             return L"MFM/RLL or ESDI CD-ROM drives never existed";
-        case IDS_2094:
-            return L"Failed to set up PCap";
-        case IDS_2095:
+        case STRING_PCAP_ERROR_NO_DEVICES:
             return L"No PCap devices found";
-        case IDS_2096:
+        case STRING_PCAP_ERROR_INVALID_DEVICE:
             return L"Invalid PCap device";
-//        case IDS_2111:
-//            return L"Unable to initialize FreeType";
-        case IDS_2112:
-            return L"Unable to initialize SDL, libsdl2 is required";
-//        case IDS_2132:
-//            return L"libfreetype is required for ESC/P printer emulation.";
-//        case IDS_2133:
-//            return L"libgs is required for automatic conversion of PostScript files to PDF.\n\nAny documents sent to the generic PostScript printer will be saved as PostScript (.ps) files.";
-//        case IDS_2134:
-//            return L"libfluidsynth is required for FluidSynth MIDI output.";
-        case IDS_2130:
+        case STRING_GHOSTSCRIPT_ERROR_DESC:
+            return L"libgs is required for automatic conversion of PostScript files to PDF.\n\nAny documents sent to the generic PostScript printer will be saved as PostScript (.ps) files.";
+        case STRING_PCAP_ERROR_DESC:
             return L"Make sure libpcap is installed and that you are on a libpcap-compatible network connection.";
-        case IDS_2115:
+        case STRING_GHOSTSCRIPT_ERROR_TITLE:
             return L"Unable to initialize Ghostscript";
-        case IDS_2063:
+        case STRING_GHOSTPCL_ERROR_TITLE:
+            return L"Unable to initialize GhostPCL";
+        case STRING_GHOSTPCL_ERROR_DESC:
+            return L"libgpcl6 is required for automatic conversion of PCL files to PDF.\n\nAny documents sent to the generic PCL printer will be saved as Printer Command Language (.pcl) files.";
+        case STRING_HW_NOT_AVAILABLE_MACHINE:
             return L"Machine \"%hs\" is not available due to missing ROMs in the roms/machines directory. Switching to an available machine.";
-        case IDS_2064:
+        case STRING_HW_NOT_AVAILABLE_VIDEO:
             return L"Video card \"%hs\" is not available due to missing ROMs in the roms/video directory. Switching to an available video card.";
-        case IDS_2129:
+        case STRING_HW_NOT_AVAILABLE_TITLE:
             return L"Hardware not available";
-        case IDS_2143:
+        case STRING_MONITOR_SLEEP:
             return L"Monitor in sleep mode";
-        default:
-            return L"";
     }
+    return L"";
 }
 
 // new source file TODO
@@ -173,9 +166,9 @@ main_thread(void *param)
         if (atomic_load(&doresize_monitors[0]) && !video_fullscreen && !is_quit) {
            // printf("resize to %d x %d\n", scrnsz_x, scrnsz_y);
             if (vid_resize & 2)
-                plat_resize(fixed_size_x, fixed_size_y);
+                plat_resize(fixed_size_x, fixed_size_y, 0);
             else
-                plat_resize(scrnsz_x, scrnsz_y);
+                plat_resize(scrnsz_x, scrnsz_y, 0);
             atomic_store(&doresize_monitors[0], 1);
         }
     }

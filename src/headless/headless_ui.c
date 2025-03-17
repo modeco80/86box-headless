@@ -28,6 +28,10 @@ extern double mouse_sensitivity;
 // New UI stuff for 4.0+ ?
 int status_icons_fullscreen;
 
+// Needed because 86box code is 86box quality.
+#include <86box/qt-glsl.h>
+char gl3_shader_file[MAX_USER_SHADERS][512];
+
 void
 ui_sb_update_icon_state(int tag, int state)
 {
@@ -97,8 +101,9 @@ ui_sb_mt32lcd(char *str)
 }
 
 int
-plat_vidapi(char *api)
+plat_vidapi(const char *api)
 {
+    // FIXME: Initalize RAMPVIDEO
     // Always initalize VNC
     //vnc_init(NULL);
 
@@ -121,7 +126,7 @@ plat_mouse_capture(int on)
 }
 
 void
-plat_resize(int w, int h)
+plat_resize(int w, int h, int monitor_index)
 {
     //vnc_resize(w, h);
 }

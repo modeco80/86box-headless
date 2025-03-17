@@ -35,7 +35,7 @@ static int                     midi_freq     = 44100;
 static int                     midi_buf_size = 4410;
 static int                     initialized   = 0;
 
-#define FREQ   48000
+#define FREQ   SOUND_FREQ
 #define BUFLEN SOUNDBUFLEN
 
 extern "C" {
@@ -55,15 +55,6 @@ closeal(void)
     initialized = 0;
 }
 
-void
-givealbuffer(void *buf)
-{
-}
-
-void
-givealbuffer_cd(void *buf)
-{
-}
 
 void
 al_set_midi(int freq, int buf_size)
@@ -72,9 +63,44 @@ al_set_midi(int freq, int buf_size)
     midi_buf_size = buf_size;
 }
 
+
 void
-givealbuffer_midi(void *buf, uint32_t size)
+givealbuffer_common(const void *buf, const uint8_t src, const int size, const int freq)
 {
+    if (!initialized)
+        return;
+    // TODO: Pass data to RAMP
 }
+
+void
+givealbuffer(const void *buf)
+{
+    givealbuffer_common(buf, 0, BUFLEN << 1, FREQ);
+}
+
+void
+givealbuffer_music(const void *buf)
+{
+    givealbuffer_common(buf, 1, MUSICBUFLEN << 1, MUSIC_FREQ);
+}
+
+void
+givealbuffer_wt(const void *buf)
+{
+    givealbuffer_common(buf, 2, WTBUFLEN << 1, WT_FREQ);
+}
+
+void
+givealbuffer_cd(const void *buf)
+{
+    givealbuffer_common(buf, 3, CD_BUFLEN << 1, CD_FREQ);
+}
+
+void
+givealbuffer_midi(const void *buf, const uint32_t size)
+{
+    givealbuffer_common(buf, 4, (int) size, midi_freq);
+}
+
 
 }

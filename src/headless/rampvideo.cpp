@@ -21,7 +21,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
-#include <rfb/rfb.h>
 #define HAVE_STDARG_H
 #include <86box/86box.h>
 #include <86box/device.h>
@@ -30,14 +29,7 @@
 #include <86box/mouse.h>
 #include <86box/plat.h>
 #include <86box/ui.h>
-#include <86box/vnc.h>
 
-#define VNC_MIN_X 320
-#define VNC_MAX_X 2048
-#define VNC_MIN_Y 200
-#define VNC_MAX_Y 2048
-
-static rfbScreenInfoPtr rfb = NULL;
 static int              clients;
 static int              updatingSize;
 static int              allowedX,
@@ -69,7 +61,7 @@ rampvideo_log(const char *fmt, ...)
     }
 }
 #else
-#    define vnc_log(fmt, ...)
+#    define rampvideo_log(fmt, ...)
 #endif
 
 

@@ -27,10 +27,13 @@ add_subdirectory(flatbuffers)
 add_library(plat OBJECT 
         headless.c
         headless_path.cpp
+        headless_netsocket.cpp
         headless_fs.cpp
         headless_dynld.cpp
         headless_util.cpp
         headless_timer.cpp
+
+        dummy_cdrom_ioctl.c
         
         # RAMP
         rampserver.cpp

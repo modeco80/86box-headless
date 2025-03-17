@@ -144,7 +144,7 @@ plat_init_rom_paths(void)
 }
 
 void
-plat_get_global_config_dir(char *strptr)
+plat_get_global_config_dir(char *strptr, uint8_t len)
 {
 #ifdef __APPLE__
     char* prefPath = SDL_GetPrefPath(NULL, "net.86Box.86Box")
