@@ -148,17 +148,15 @@ main_thread(void *param)
         } else /* Just so we dont overload the host OS. */
             plat_delay_ms(1);
 
-#if 0
         /* If needed, handle a screen resize. */
         if (atomic_load(&doresize_monitors[0]) && !video_fullscreen && !is_quit) {
-            printf("resize to %d x %d\n", scrnsz_x, scrnsz_y);
+            // printf("resize to %d x %d\n", scrnsz_x, scrnsz_y);
             if (vid_resize & 2)
                 plat_resize(fixed_size_x, fixed_size_y, 0);
             else
                 plat_resize(scrnsz_x, scrnsz_y, 0);
             atomic_store(&doresize_monitors[0], 1);
         }
-#endif
     }
 
     is_quit = 1;

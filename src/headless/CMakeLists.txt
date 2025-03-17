@@ -27,16 +27,15 @@ add_subdirectory(flatbuffers)
 add_library(plat OBJECT 
         headless.cpp
 
-        # Headless platform functions
-        headless_mmap.cpp
-        headless_path.cpp
-        headless_netsocket.cpp
-        headless_fs.cpp
-        headless_dynld.cpp
-        headless_util.cpp
-        headless_timer.cpp
-
-        dummy_cdrom_ioctl.c
+        # Headless platform source files
+        platform/headless_mmap.cpp
+        platform/headless_path.cpp
+        platform/headless_netsocket.cpp
+        platform/headless_fs.cpp
+        platform/headless_dynld.cpp
+        platform/headless_util.cpp
+        platform/headless_timer.cpp
+        platform/dummy_cdrom_ioctl.c
         
         # util code
         util/buffer_pool.cpp
@@ -78,6 +77,6 @@ endif()
 #find_package(Threads REQUIRED)
 #target_link_libraries(86Box Threads::Threads)
 
-add_library(ui OBJECT headless_ui.c headless_cdrom.c)
+add_library(ui OBJECT platform/headless_ui.c platform/headless_cdrom.c)
 target_compile_definitions(ui PUBLIC _FILE_OFFSET_BITS=64)
 target_link_libraries(ui ${CMAKE_DL_LIBS})

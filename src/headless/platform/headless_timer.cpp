@@ -3,11 +3,11 @@
 //
 
 // This essentially wires up the highprec time provided by
-// util/highprec_timer.cpp to the 86box codebase.
+// util/highprec_timer.cpp to the 86Box codebase.
 
 #include <86box/plat.h>
 
-#include "util/highprec_timer.hpp"
+#include "../util/highprec_timer.hpp"
 
 static bool startTimeInitalized = false;
 static uint64_t startTime = 0;
