@@ -64,21 +64,24 @@ rampvideo_log(const char *fmt, ...)
 #    define rampvideo_log(fmt, ...)
 #endif
 
-
 static void
 rampvideo_blit(int x, int y, int w, int h, int monitor_index)
 {
+    printf("rampvideo_blit(rect: %dx%d at %dx%d, monitor %d)\n", w, h, x, y, monitor_index);
  
     //for (row = 0; row < h; ++row)
     //    video_copy(&(((uint8_t *) rfb->frameBuffer)[row * 2048 * sizeof(uint32_t)]), &(buffer32->line[y + row][x]), w * sizeof(uint32_t));
 
 
+    // Signal to 86Box we don't need the buffer anymore.
+    video_blit_complete_monitor(monitor_index);
 }
 
 extern "C" {
 int
 rampvideo_init(UNUSED(void *arg))
 {
+    // Pause emulation
     plat_pause(1);
     cgapal_rebuild_monitor(0);
 

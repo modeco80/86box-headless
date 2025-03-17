@@ -40,12 +40,32 @@ ramp_server_stop()
 
 namespace ramp {
 
+#if 0
+
+/// A message buffer.
+struct MessageBuffer {
+    /// Creates a new MessageBuffer that 
+    static std::shared_ptr<MessageBuffer> copy(const std::uint8_t* pBuffer, std::size_t len) {
+
+    }
+
+private:
+    std::uint8_t* pBuffer;
+
+};
+#endif
+
 /// A connected RAMP user.
 struct ServerSession : public std::enable_shared_from_this<ServerSession> {
     ServerSession(StreamProtocol::socket &&socket)
         : socket(std::move(socket))
     {
         // begin async read/write loop
+    }
+
+    void Close() 
+    {
+
     }
 
     void DoRead()
@@ -57,7 +77,7 @@ struct ServerSession : public std::enable_shared_from_this<ServerSession> {
         if (ec) {
             // TODO: close connection (and notify server so it can delete us, otherwise
             // we'll leak)
-            return;
+            return Close();
         }
 
         // (TODO) Handle RAMP server message 
@@ -97,6 +117,7 @@ struct Server::Impl {
         // Stop acceptor
         // Stop I/O context (Server::Start will return)
         // ...
+
         return;
     }
 
@@ -106,7 +127,7 @@ private:
     asio::io_context ioc{1};
     StreamProtocol::acceptor acceptor;
 
-    std::vector<std::shared_ptr<ServerSession>> sessions;
+    std::set<std::shared_ptr<ServerSession>> sessions;
 };
 
 Server &

@@ -25,7 +25,7 @@ set(FLATBUFFERS_BUILD_TESTS OFF)
 add_subdirectory(flatbuffers)
 
 add_library(plat OBJECT 
-        headless.c
+        headless.cpp
         headless_path.cpp
         headless_netsocket.cpp
         headless_fs.cpp
@@ -35,6 +35,10 @@ add_library(plat OBJECT
 
         dummy_cdrom_ioctl.c
         
+        # util code
+        util/buffer_pool.cpp
+        util/highprec_timer.cpp
+
         # RAMP
         rampserver.cpp
         rampvideo.cpp
@@ -56,6 +60,10 @@ target_link_libraries(plat PRIVATE
 
 target_include_directories(plat PRIVATE 
     ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+target_compile_features(plat PRIVATE
+    cxx_std_20 # For Coroutines
 )
 
 

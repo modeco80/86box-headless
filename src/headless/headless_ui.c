@@ -32,6 +32,49 @@ int status_icons_fullscreen;
 #include <86box/qt-glsl.h>
 char gl3_shader_file[MAX_USER_SHADERS][512];
 
+void rampvideo_init(); // rampvideo.cpp
+
+
+wchar_t *
+plat_get_string(int i)
+{
+    switch (i) {
+        case STRING_MOUSE_CAPTURE:
+            return L"Click to capture mouse";
+        case STRING_MOUSE_RELEASE:
+            return L"Press CTRL-END to release mouse";
+        case STRING_MOUSE_RELEASE_MMB:
+            return L"Press CTRL-END or middle button to release mouse";
+        case STRING_INVALID_CONFIG:
+            return L"Invalid configuration";
+        case STRING_NO_ST506_ESDI_CDROM:
+            return L"MFM/RLL or ESDI CD-ROM drives never existed";
+        case STRING_PCAP_ERROR_NO_DEVICES:
+            return L"No PCap devices found";
+        case STRING_PCAP_ERROR_INVALID_DEVICE:
+            return L"Invalid PCap device";
+        case STRING_GHOSTSCRIPT_ERROR_DESC:
+            return L"libgs is required for automatic conversion of PostScript files to PDF.\n\nAny documents sent to the generic PostScript printer will be saved as PostScript (.ps) files.";
+        case STRING_PCAP_ERROR_DESC:
+            return L"Make sure libpcap is installed and that you are on a libpcap-compatible network connection.";
+        case STRING_GHOSTSCRIPT_ERROR_TITLE:
+            return L"Unable to initialize Ghostscript";
+        case STRING_GHOSTPCL_ERROR_TITLE:
+            return L"Unable to initialize GhostPCL";
+        case STRING_GHOSTPCL_ERROR_DESC:
+            return L"libgpcl6 is required for automatic conversion of PCL files to PDF.\n\nAny documents sent to the generic PCL printer will be saved as Printer Command Language (.pcl) files.";
+        case STRING_HW_NOT_AVAILABLE_MACHINE:
+            return L"Machine \"%hs\" is not available due to missing ROMs in the roms/machines directory. Switching to an available machine.";
+        case STRING_HW_NOT_AVAILABLE_VIDEO:
+            return L"Video card \"%hs\" is not available due to missing ROMs in the roms/video directory. Switching to an available video card.";
+        case STRING_HW_NOT_AVAILABLE_TITLE:
+            return L"Hardware not available";
+        case STRING_MONITOR_SLEEP:
+            return L"Monitor in sleep mode";
+    }
+    return L"";
+}
+
 void
 ui_sb_update_icon_state(int tag, int state)
 {
@@ -106,12 +149,20 @@ plat_vidapi(const char *api)
     // FIXME: Initalize RAMPVIDEO
     // Always initalize VNC
     //vnc_init(NULL);
+    rampvideo_init();
 
-    endblit();
+    //endblit();
     device_force_redraw();
 
     return 1;
 }
+
+char *
+plat_vidapi_name(int i)
+{
+    return "ramp";
+}
+
 
 int
 plat_setvid(int api)
@@ -150,6 +201,6 @@ ui_deinit_monitor(int monitor_index)
 void
 plat_resize_request(int w, int h, int monitor_index)
 {
-   atomic_store((&doresize_monitors[monitor_index]), 1);
+   //atomic_store((&doresize_monitors[monitor_index]), 1);
 }
 
