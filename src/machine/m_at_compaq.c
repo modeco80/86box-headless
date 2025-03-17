@@ -629,11 +629,13 @@ compaq_plasma_recalcattrs(compaq_plasma_t *self)
 static void *
 compaq_plasma_init(UNUSED(const device_t *info))
 {
-    compaq_plasma_t *self = malloc(sizeof(compaq_plasma_t));
-    memset(self, 0, sizeof(compaq_plasma_t));
+    compaq_plasma_t *self = calloc(1, sizeof(compaq_plasma_t));
 
     video_inform(VIDEO_FLAG_TYPE_CGA, &timing_compaq_plasma);
-    loadfont_ex("roms/machines/portableiii/K Combined.bin", 11, 0x4bb2);
+    if (compaq_machine_type == COMPAQ_PORTABLEIII)
+        loadfont_ex("roms/machines/portableiii/K Combined.bin", 11, 0x4bb2);
+    else
+        loadfont_ex("roms/machines/portableiii/P.2 Combined.bin", 11, 0x4b49);
 
     self->cga.composite = 0;
     self->cga.revision  = 0;
@@ -711,7 +713,7 @@ const device_t compaq_plasma_device = {
     .init          = compaq_plasma_init,
     .close         = compaq_plasma_close,
     .reset         = NULL,
-    { .available = NULL },
+    .available     = NULL,
     .speed_changed = compaq_plasma_speed_changed,
     .force_redraw  = NULL,
     .config        = compaq_plasma_config
@@ -776,7 +778,7 @@ machine_at_compaq_init(const machine_t *model, int type)
 {
     compaq_machine_type = type;
 
-    if (fdc_type == FDC_INTERNAL)
+    if (fdc_current[0] == FDC_INTERNAL)
         device_add(&fdc_at_device);
 
     if (type < COMPAQ_PORTABLEIII386) {
@@ -795,23 +797,25 @@ machine_at_compaq_init(const machine_t *model, int type)
             break;
 
         case COMPAQ_PORTABLEIII:
+            if (hdc_current[0] == HDC_INTERNAL)
+                device_add(&ide_isa_device);
             if (gfxcard[0] == VID_INTERNAL)
                 device_add(&compaq_plasma_device);
             machine_at_init(model);
             break;
 
         case COMPAQ_PORTABLEIII386:
-            if (hdc_current == 1)
+            if (hdc_current[0] == HDC_INTERNAL)
                 device_add(&ide_isa_device);
             if (gfxcard[0] == VID_INTERNAL)
                 device_add(&compaq_plasma_device);
-            machine_at_init(model);
+            device_add(&compaq_386_device);
+            machine_at_common_init(model);
+            device_add(&keyboard_at_compaq_device);
             break;
 
         case COMPAQ_DESKPRO386:
         case COMPAQ_DESKPRO386_05_1988:
-            if (hdc_current == 1)
-                device_add(&ide_isa_device);
             device_add(&compaq_386_device);
             machine_at_common_init(model);
             device_add(&keyboard_at_compaq_device);
@@ -861,8 +865,8 @@ machine_at_portableiii386_init(const machine_t *model)
 {
     int ret;
 
-    ret = bios_load_linearr("roms/machines/portableiii/K Combined.bin",
-                                0x000f8000, 65536, 0);
+    ret = bios_load_linearr("roms/machines/portableiii/P.2 Combined.bin",
+                                0x000f0000, 131072, 0);
 
     if (bios_only || !ret)
         return ret;

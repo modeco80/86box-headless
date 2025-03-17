@@ -270,6 +270,11 @@ sdl_close(void)
     sdl_destroy_texture();
     sdl_destroy_window();
 
+    if (pixeldata != NULL) {
+        free(pixeldata);
+        pixeldata = NULL;
+    }
+
     /* Quit. */
     SDL_Quit();
     sdl_flags = -1;
@@ -387,7 +392,7 @@ sdl_reload(void)
 }
 
 int
-plat_vidapi(char *api)
+plat_vidapi(UNUSED(const char *api))
 {
     return 0;
 }
@@ -419,9 +424,9 @@ sdl_init_common(int flags)
     sdl_set_fs(video_fullscreen);
     if (!(video_fullscreen & 1)) {
         if (vid_resize & 2)
-            plat_resize(fixed_size_x, fixed_size_y);
+            plat_resize(fixed_size_x, fixed_size_y, 0);
         else
-            plat_resize(scrnsz_x, scrnsz_y);
+            plat_resize(scrnsz_x, scrnsz_y, 0);
     }
     if ((vid_resize < 2) && window_remember) {
         SDL_SetWindowSize(sdl_win, window_w, window_h);
@@ -429,6 +434,8 @@ sdl_init_common(int flags)
 
     /* Make sure we get a clean exit. */
     atexit(sdl_close);
+
+    pixeldata = malloc(2048 * 2048 * 4);
 
     /* Register our renderer! */
     video_setblit(sdl_blit_shim);
@@ -472,7 +479,7 @@ plat_mouse_capture(int on)
 }
 
 void
-plat_resize(int w, int h)
+plat_resize(int w, int h, UNUSED(int monitor_index))
 {
     SDL_LockMutex(sdl_mutex);
     resize_w       = w;
@@ -526,19 +533,19 @@ ui_window_title(wchar_t *str)
 }
 
 void
-ui_init_monitor(int monitor_index)
+ui_init_monitor(UNUSED(int monitor_index))
 {
     /* No-op. */
 }
 
 void
-ui_deinit_monitor(int monitor_index)
+ui_deinit_monitor(UNUSED(int monitor_index))
 {
     /* No-op. */
 }
 
 void
-plat_resize_request(int w, int h, int monitor_index)
+plat_resize_request(UNUSED(int w), UNUSED(int h), int monitor_index)
 {
     atomic_store((&doresize_monitors[monitor_index]), 1);
 }
