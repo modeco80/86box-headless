@@ -1,8 +1,16 @@
 
 #include "mononoke_server.hpp"
+#include <google/protobuf/message.h>
 #include <set>
+#include <stdexcept>
 
+#include "proto/mononoke_client.pb.h"
+#include "proto/mononoke_server.pb.h"
+
+#include <boost/asio/read.hpp>
+#include <boost/asio/write.hpp>
 #include "util/asio_util/asio_types.hpp"
+#include "util/buffer_pool.hpp"
 
 namespace asio       = boost::asio;
 using StreamProtocol = asio::local::stream_protocol;
@@ -34,6 +42,59 @@ mononoke_server_stop()
 
 namespace mononoke {
 
+struct MononokeFrameHeader {
+    char          magic[4]; // MMSG
+    std::uint32_t dataSize;
+
+    MononokeFrameHeader()
+    {
+        magic[0] = 'M';
+        magic[1] = 'M';
+        magic[2] = 'S';
+        magic[3] = 'G';
+    }
+};
+
+util::BufferPool mononokeProtobufsPool;
+
+/// Sends a mononoke framed protobuf message to the given AsyncWriteStream.
+template <class AsyncWriteStream>
+util::Awaitable<void>
+AsyncSendMononokeFramed(AsyncWriteStream &stream, google::protobuf::Message &message)
+{
+    MononokeFrameHeader header;
+    auto                bufSize = message.ByteSizeLong();
+
+    auto *buffer = mononokeProtobufsPool.GetBuffer(bufSize);
+    if (buffer == nullptr)
+        throw std::runtime_error("Buffer pool was unable to serve request");
+
+    if (!message.SerializeToArray(&buffer[0], bufSize))
+        throw std::runtime_error("Failed to serialize Mononoke protobuf");
+
+    // Swap data size to BE.
+    header.dataSize = __builtin_bswap32(bufSize);
+
+    // Use Scatter-gather I/O for nyoom.
+    std::array<asio::const_buffer, 2> buffers = {
+        asio::buffer(static_cast<void *>(&header), sizeof(header)),
+        asio::buffer(buffer, bufSize)
+    };
+
+    // Write it, and once we're done in either success or failure case return the buffer
+    // back to the pool.
+    try {
+        co_await asio::async_write(stream, buffers, asio::deferred);
+    } catch (boost::system::system_error &ec) {
+        mononokeProtobufsPool.ReturnBuffer(buffer);
+        throw;
+        co_return;
+    }
+
+    mononokeProtobufsPool.ReturnBuffer(buffer);
+    co_return;
+}
+
 struct Server::Impl {
 
     /// A Mononoke client session.
@@ -57,6 +118,15 @@ struct Server::Impl {
         util::Awaitable<void> ReadCoro()
         {
             try {
+
+                // TEMP: Send a resize message to make sure AsyncSendMononokeFramed works
+                mononoke::ServerMessage serverMessage;
+                auto                   *resize = serverMessage.mutable_resize();
+                resize->set_w(640);
+                resize->set_h(480);
+
+                co_await AsyncSendMononokeFramed(socket, serverMessage);
+
                 while (true) {
                     char buffer[4] {};
 
@@ -71,12 +141,10 @@ struct Server::Impl {
             }
         }
 
-
         // TODO: on connect we should send some info
         // like initial size and full framebuffer at the time
 
     private:
-
         Impl                  &impl;
         StreamProtocol::socket socket;
         // TODO: Send buffer

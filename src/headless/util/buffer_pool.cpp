@@ -2,6 +2,7 @@
 #include "buffer_pool.hpp"
 
 #include <cstdlib>
+#include <cstring>
 #include <new>
 
 // set to 1 to enable debug messages
@@ -81,6 +82,10 @@ namespace util {
 		// Mark the buffer as free to re-use.
 		if(pPooledBuffer->inUse)
 			pPooledBuffer->inUse = false;
+
+		// Wipe the pooled buffer's contents entirely once it is returned, so that 
+		// we wouldn't have to do it ourselves.
+		memset(pPooledBuffer->GetPointer(), 0, pPooledBuffer->GetCapacity());
 
 		// The buffer is already in the pool's freelist,
 		// so we do not need to re-add it.
