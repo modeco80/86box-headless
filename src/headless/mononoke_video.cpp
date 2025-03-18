@@ -72,11 +72,3 @@ mononoke_video_resize(int width, int height)
     // Need to handle this later :)
 }
 }
-
-/*
-void
-mononoke_video_take_screenshot(wchar_t *fn)
-{
-    rampvideo_log("VNC: take_screenshot\n");
-}
-*/
