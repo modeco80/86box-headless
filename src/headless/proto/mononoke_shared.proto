@@ -1,0 +1,19 @@
+// Shared Mononoke definitions.
+
+syntax = "proto3";
+package mononoke;
+
+/// What media type
+enum RemovableMediaInterface {
+    FLOPPY = 0;
+    CD = 1;
+    MD = 2;
+    CARTRIDGE = 3;
+    ZIP = 4;
+}
+
+message MediaAddress {
+    RemovableMediaInterface interface = 1;
+    uint32 index = 2;
+}
+

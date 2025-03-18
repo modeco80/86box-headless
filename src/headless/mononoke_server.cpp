@@ -1,11 +1,8 @@
 
-#include "rampserver.hpp"
+#include "mononoke_server.hpp"
+#include <set>
 
-#include <ramp_proto_generated/ramp_client_generated.hpp>
-#include <ramp_proto_generated/ramp_server_generated.hpp>
-
-#include <boost/asio/local/stream_protocol.hpp>
-#include <boost/asio/io_context.hpp>
+#include "util/asio_util/asio_types.hpp"
 
 namespace asio       = boost::asio;
 using StreamProtocol = asio::local::stream_protocol;
@@ -13,7 +10,7 @@ using StreamProtocol = asio::local::stream_protocol;
 #include <cstdio>
 
 // A pointer to the server. It's heap allocated using new
-std::unique_ptr<ramp::Server> theServer;
+std::unique_ptr<mononoke::Server> theServer;
 
 
 // C glue layer used to tack onto the main loop
@@ -21,41 +18,25 @@ extern "C" {
 
 extern char vm_name[1024]; // We use this to make the socket path
 
-
 void
-ramp_server_start()
+mononoke_server_start()
 {
-    theServer = std::make_unique<ramp::Server>();
-
-    // std::printf("/tmp/86box-ramp-%s\n", vm_name);
+    theServer = std::make_unique<mononoke::Server>();
+    theServer->Start();
 }
 
 void
-ramp_server_stop()
+mononoke_server_stop()
 {
     // done
     theServer->Stop();
 }
 }
 
-namespace ramp {
+namespace mononoke {
 
-#if 0
 
-/// A message buffer.
-struct MessageBuffer {
-    /// Creates a new MessageBuffer that 
-    static std::shared_ptr<MessageBuffer> copy(const std::uint8_t* pBuffer, std::size_t len) {
-
-    }
-
-private:
-    std::uint8_t* pBuffer;
-
-};
-#endif
-
-/// A connected RAMP user.
+/// A connected Mononoke user.
 struct ServerSession : public std::enable_shared_from_this<ServerSession> {
     ServerSession(StreamProtocol::socket &&socket)
         : socket(std::move(socket))
@@ -80,7 +61,7 @@ struct ServerSession : public std::enable_shared_from_this<ServerSession> {
             return Close();
         }
 
-        // (TODO) Handle RAMP server message 
+        // (TODO) Handle mononoke server message 
 
 
         // Do another read (we have the clear capability to)

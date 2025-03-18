@@ -32,7 +32,7 @@ int status_icons_fullscreen;
 #include <86box/qt-glsl.h>
 char gl3_shader_file[MAX_USER_SHADERS][512];
 
-void rampvideo_init(); // rampvideo.cpp
+void mononoke_video_init(); // mononoke_video.cpp
 
 
 wchar_t *
@@ -146,12 +146,11 @@ ui_sb_mt32lcd(char *str)
 int
 plat_vidapi(const char *api)
 {
-    // FIXME: Initalize RAMPVIDEO
-    // Always initalize VNC
-    //vnc_init(NULL);
-    rampvideo_init();
+    // Initialize Mononoke video driver
+    mononoke_video_init();
 
-    //endblit();
+
+    endblit();
     device_force_redraw();
 
     return 1;
@@ -160,7 +159,7 @@ plat_vidapi(const char *api)
 char *
 plat_vidapi_name(int i)
 {
-    return "ramp";
+    return "mononoke";
 }
 
 
@@ -201,6 +200,6 @@ ui_deinit_monitor(int monitor_index)
 void
 plat_resize_request(int w, int h, int monitor_index)
 {
-   //atomic_store((&doresize_monitors[monitor_index]), 1);
+   atomic_store((&doresize_monitors[monitor_index]), 1);
 }
 

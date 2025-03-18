@@ -16,7 +16,7 @@ using s32 = std::int32_t;
 using u64 = std::uint64_t;
 using s64 = std::int64_t;
 
-namespace ramp {
+namespace mononoke {
 
 	struct Server {
 
@@ -36,7 +36,7 @@ namespace ramp {
 
 
 	
-		// Valid when a r8mp server is created; invalid otherwise
+		// Valid when a Mononoke server is created; invalid otherwise
 		static Server& the();
 	
 		// internal emulator surface - only call these if you know

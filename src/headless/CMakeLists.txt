@@ -18,14 +18,13 @@
 
 # Add required things for ramp
 find_package(Boost REQUIRED)
+find_package(Protobuf REQUIRED)
 
-# Flatbuffers
-set(FLATBUFFERS_INSTALL OFF)
-set(FLATBUFFERS_BUILD_TESTS OFF)
-add_subdirectory(flatbuffers)
 
 add_library(plat OBJECT 
-        headless.cpp
+        # utility code
+        util/buffer_pool.cpp
+        util/highprec_timer.cpp
 
         # Headless platform source files
         platform/headless_mmap.cpp
@@ -36,33 +35,39 @@ add_library(plat OBJECT
         platform/headless_util.cpp
         platform/headless_timer.cpp
         platform/dummy_cdrom_ioctl.c
-        
-        # util code
-        util/buffer_pool.cpp
-        util/highprec_timer.cpp
 
-        # RAMP
-        rampserver.cpp
-        rampvideo.cpp
-        rampsound.cpp
+        # Mononoke server
+        mononoke_server.cpp
+        mononoke_video.cpp
+        mononoke_sound.cpp
+
+        # Main
+        headless_main.cpp
         )
 
+# Mononoke Protocol Buffers definitions
+add_library(mononoke_pb 
+    proto/mononoke_client.proto
+    proto/mononoke_server.proto
+    proto/mononoke_shared.proto
+)
 
-flatbuffers_generate_headers(
-	TARGET ramp_proto_generated
-	SCHEMAS ${CMAKE_CURRENT_LIST_DIR}/proto/ramp_client.fbs ${CMAKE_CURRENT_LIST_DIR}/proto/ramp_server.fbs
-	FLAGS --cpp-std c++17 --cpp-field-case-style lower --scoped-enums --filename-ext hpp
+protobuf_generate(
+    TARGET mononoke_pb
+    LANGUAGE cpp
+    IMPORT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_include_directories(mononoke_pb PUBLIC
+    ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 target_link_libraries(plat PRIVATE 
     Boost::headers # For ASIO
-    FlatBuffers::FlatBuffers
-    ramp_proto_generated
+    protobuf::libprotobuf
+    mononoke_pb
 )
 
-target_include_directories(plat PRIVATE 
-    ${CMAKE_CURRENT_BINARY_DIR}
-)
 
 target_compile_features(plat PRIVATE
     cxx_std_20 # For Coroutines
@@ -77,6 +82,6 @@ endif()
 #find_package(Threads REQUIRED)
 #target_link_libraries(86Box Threads::Threads)
 
-add_library(ui OBJECT platform/headless_ui.c platform/headless_cdrom.c)
+add_library(ui OBJECT ui/headless_ui.c ui/headless_cdrom.c)
 target_compile_definitions(ui PUBLIC _FILE_OFFSET_BITS=64)
 target_link_libraries(ui ${CMAKE_DL_LIBS})

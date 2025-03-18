@@ -1,0 +1,56 @@
+syntax = "proto3";
+package mononoke;
+
+import "proto/mononoke_shared.proto";
+
+message MouseMessage {
+    uint32 x = 1;
+    uint32 y = 2;
+    uint32 buttons = 3; // actually a bitset
+}
+
+message KeyMessage  {
+    uint32 keysym = 1; // X11 keysym
+    bool pressed = 2;
+}
+
+message ManageMessage {
+    uint32 id = 1;
+
+    message MountRemovableMedia {
+        mononoke.MediaAddress address = 1;
+
+        string mediaPath = 3;
+        bool writeProtect = 4;
+    }
+
+    message EjectRemovableMedia {
+        mononoke.MediaAddress address = 1;
+    }
+
+    message SetNetworkLink {
+        uint32 id = 1;
+        bool link = 2;
+    }
+
+    /// Hard-reset the emulated machine.
+    message HardReset {}
+
+    oneof Union {
+        HardReset reset = 2;
+
+        MountRemovableMedia mount_removable_media = 3;
+        EjectRemovableMedia eject_removable_media = 4;
+
+        SetNetworkLink set_network_link = 5;
+    }
+}
+
+message ClientMessage {
+    oneof Union {
+        KeyMessage key = 1;
+        MouseMessage mouse = 2;
+
+        ManageMessage manage = 3;
+    }
+}

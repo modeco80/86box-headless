@@ -1,0 +1,62 @@
+
+
+syntax = "proto3";
+package mononoke;
+
+import "proto/mononoke_shared.proto";
+
+
+
+message ServerMessage {
+
+    message AudioData {
+        bytes pcmData = 1;
+    }
+
+    message DisplayResize {
+        uint32 w = 1;
+        uint32 h = 2;
+    }
+
+    message DisplayRect {
+        uint32 x = 1;
+        uint32 y = 2;
+        uint32 w = 3;
+        uint32 h = 4;
+        bytes rectData = 5;
+    }
+
+    message DisplayRects {
+        repeated DisplayRect rects = 1; // all differing rects
+    }
+
+    // Response to management API questions
+    message ManageResponse {
+        // Return code
+        enum Code {
+            /// No error.
+            SUCCESS = 0;
+
+            /// Given path is too long. (may not be a real limitation)
+            PATH_TOO_LONG = 1;
+
+            /// The given filename doesn't exist
+            FILE_DOES_NOT_EXIST = 2;
+            
+            //...
+        }
+
+        uint32 id = 1; // Sent by user
+        Code code = 2;
+    }
+
+    oneof Union {
+        DisplayResize resize = 1;
+        DisplayRects rects = 2; // all blitted rects in a frame
+
+        AudioData audio = 3;
+        
+        ManageResponse manage = 4;
+    }
+
+}

@@ -1,3 +1,0 @@
-[submodule "src/headless/flatbuffers"]
-	path = src/headless/flatbuffers
-	url = https://github.com/google/flatbuffers

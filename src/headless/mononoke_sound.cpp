@@ -29,7 +29,7 @@ extern "C" {
 #include <86box/sound.h>
 }
 
-#include "rampserver.hpp"
+#include "mononoke_server.hpp"
 
 static int                     midi_freq     = 44100;
 static int                     midi_buf_size = 4410;
@@ -69,7 +69,8 @@ givealbuffer_common(const void *buf, const uint8_t src, const int size, const in
 {
     if (!initialized)
         return;
-    // TODO: Pass data to RAMP
+    // TODO: Pass data to a mixer, then once audio is mixed,
+    // send it to Mononoke
 }
 
 void

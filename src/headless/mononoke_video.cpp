@@ -44,28 +44,10 @@ typedef struct {
 } MOUSESTATE;
 
 static MOUSESTATE ms;
-#define ENABLE_VNC_LOG 1
 
-#ifdef ENABLE_VNC_LOG
-int rampvideo_do_log = ENABLE_VNC_LOG;
 
 static void
-rampvideo_log(const char *fmt, ...)
-{
-    va_list ap;
-
-    if (rampvideo_do_log) {
-        va_start(ap, fmt);
-        pclog_ex(fmt, ap);
-        va_end(ap);
-    }
-}
-#else
-#    define rampvideo_log(fmt, ...)
-#endif
-
-static void
-rampvideo_blit(int x, int y, int w, int h, int monitor_index)
+mononoke_video_blit(int x, int y, int w, int h, int monitor_index)
 {
     printf("rampvideo_blit(rect: %dx%d at %dx%d, monitor %d)\n", w, h, x, y, monitor_index);
  
@@ -79,7 +61,7 @@ rampvideo_blit(int x, int y, int w, int h, int monitor_index)
 
 extern "C" {
 int
-rampvideo_init(UNUSED(void *arg))
+mononoke_video_init(UNUSED(void *arg))
 {
     // Pause emulation
     plat_pause(1);
@@ -87,19 +69,19 @@ rampvideo_init(UNUSED(void *arg))
 
 
     /* Set up our BLIT handlers. */
-    video_setblit(rampvideo_blit);
+    video_setblit(mononoke_video_blit);
 
     return (1);
 }
 
 void
-rampvideo_close(void)
+mononoke_video_close(void)
 {
     video_setblit(NULL);
 }
 
 void
-rampvideo_resize(int x, int y)
+mononoke_video_resize(int x, int y)
 {
    // Need to handle this later :)
 }
@@ -108,7 +90,7 @@ rampvideo_resize(int x, int y)
 
 /*
 void
-rampvideo_take_screenshot(wchar_t *fn)
+mononoke_video_take_screenshot(wchar_t *fn)
 {
     rampvideo_log("VNC: take_screenshot\n");
 }

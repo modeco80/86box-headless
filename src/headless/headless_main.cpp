@@ -45,9 +45,10 @@ char     icon_set[256] = "";                  /* name of the iconset to be used 
 
 mutex_t *blit_mutex;
 
-// Starts the RAMP server and blocks the main thread.
-void ramp_server_start(void);
-void ramp_server_stop(void);
+// Interfaces to mononoke_server.cpp
+// (techinically not needed, this file is C++ now)
+void mononoke_server_start(void);
+void mononoke_server_stop(void);
 
 void
 plat_power_off(void)
@@ -186,7 +187,7 @@ do_stop(void)
     pc_close(NULL);
 
     // Stop the RAMP server
-    ramp_server_stop();
+    mononoke_server_stop();
     endblit();
 }
 
@@ -238,7 +239,7 @@ main(int argc, char **argv)
     plat_pause(0);
 
     // Start RAMP. This will block until the PC stops
-    ramp_server_start();
+    mononoke_server_start();
 
     while (1)
         sleep(1);
