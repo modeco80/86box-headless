@@ -12,7 +12,6 @@ using StreamProtocol = asio::local::stream_protocol;
 // A pointer to the server. It's heap allocated using new
 std::unique_ptr<mononoke::Server> theServer;
 
-
 // C glue layer used to tack onto the main loop
 extern "C" {
 
@@ -28,54 +27,64 @@ mononoke_server_start()
 void
 mononoke_server_stop()
 {
-    // done
     theServer->Stop();
+    theServer.reset();
 }
 }
 
 namespace mononoke {
 
+struct Server::Impl {
 
-/// A connected Mononoke user.
-struct ServerSession : public std::enable_shared_from_this<ServerSession> {
-    ServerSession(StreamProtocol::socket &&socket)
-        : socket(std::move(socket))
-    {
-        // begin async read/write loop
-    }
-
-    void Close() 
-    {
-
-    }
-
-    void DoRead()
-    {
-    }
-
-    void OnRead(boost::system::error_code ec, std::size_t bytes_read)
-    {
-        if (ec) {
-            // TODO: close connection (and notify server so it can delete us, otherwise
-            // we'll leak)
-            return Close();
+    /// A Mononoke client session.
+    struct ClientSession : public std::enable_shared_from_this<ClientSession> {
+        ClientSession(Impl &impl, StreamProtocol::socket &&socket)
+            : impl(impl)
+            , socket(std::move(socket))
+        {
+            asio::co_spawn(socket.get_executor(), ReadCoro(), asio::detached);
         }
 
-        // (TODO) Handle mononoke server message 
+        void Close()
+        {
+            try {
+                socket.close();
+                impl.OnSessionClosed(shared_from_this());
+            } catch (std::exception &a) {
+            }
+        }
+
+        util::Awaitable<void> ReadCoro()
+        {
+            try {
+                while (true) {
+                    char buffer[4] {};
+
+                    auto n = co_await socket.async_read_some(asio::mutable_buffer(&buffer[0], 4));
+                    for (auto i = 0; i < n; ++i)
+                        std::putc(buffer[i], stdout);
+                }
+            } catch (boost::system::system_error &err) {
+
+                printf("Error in Mononoke server: %s\n", err.what());
+                co_return Close();
+            }
+        }
 
 
-        // Do another read (we have the clear capability to)
-        DoRead();
-    }
+        // TODO: on connect we should send some info
+        // like initial size and full framebuffer at the time
 
-private:
-    StreamProtocol::socket socket;
-    // TODO: Send buffer
-};
+    private:
 
-struct Server::Impl {
+        Impl                  &impl;
+        StreamProtocol::socket socket;
+        // TODO: Send buffer
+    };
+
     Impl(Server &server)
-        : server(server), acceptor(ioc)
+        : server(server)
+        , acceptor(ioc)
     {
     }
 
@@ -83,32 +92,70 @@ struct Server::Impl {
     {
     }
 
-    bool Start()
+    bool
+    Start()
     {
-        // Start acceptor, if it fails, return false (so VM will exit)
-        // Run I/O context
+        asio::co_spawn(ioc.get_executor(), Listener(), asio::detached);
 
         ioc.run();
         return true;
     }
 
-    void Stop()
+    util::Awaitable<void>
+    Listener()
     {
-        // Close and delete all sessions
-        // Stop acceptor
-        // Stop I/O context (Server::Start will return)
-        // ...
+        try {
+            char path[256] {};
+            std::snprintf(&path[0], sizeof(path) - 1, "/tmp/86Box-mononoke-%s", vm_name);
 
+            // do the dance
+            acceptor.open();
+            acceptor.bind(std::string(path));
+            acceptor.listen(asio::socket_base::max_listen_connections);
+
+            printf("Mononoke: Listening on socket \"%s\"\n", path);
+
+            while (true) {
+                auto socket = co_await acceptor.async_accept(asio::deferred);
+
+                auto session = std::make_shared<ClientSession>(*this, std::move(socket));
+                sessions.insert(session);
+            }
+        } catch (boost::system::system_error &err) {
+            printf("Error in Mononoke server: %s\n", err.what());
+        }
+
+        co_return;
+    }
+
+    void
+    Stop()
+    {
+        acceptor.close();
+        ioc.stop();
+        sessions.clear();
         return;
+    }
+
+    void OnSessionClosed(std::shared_ptr<ClientSession> session)
+    {
+        printf("Session closed\n");
+        sessions.erase(session);
     }
 
 private:
     Server &server;
 
-    asio::io_context ioc{1};
+    // TODO:
+    // Surface for blit buffer
+    // Mutex for surface (since blit runs on another seperate thread)
+    //
+    // PCM data buffer
+
+    asio::io_context         ioc { 1 };
     StreamProtocol::acceptor acceptor;
 
-    std::set<std::shared_ptr<ServerSession>> sessions;
+    std::set<std::shared_ptr<ClientSession>> sessions;
 };
 
 Server &
@@ -135,5 +182,4 @@ Server::Stop()
 {
     impl->Stop();
 }
-
 }

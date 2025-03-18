@@ -9,7 +9,7 @@
 #include <86box/ui.h>
 #include <86box/version.h>
 
-#include <86box/vnc.h>
+#include "../mononoke_video.h"
 
 // Config things we need to define cause the code is messy
 
@@ -31,9 +31,6 @@ int status_icons_fullscreen;
 // Needed because 86box code is 86box quality.
 #include <86box/qt-glsl.h>
 char gl3_shader_file[MAX_USER_SHADERS][512];
-
-void mononoke_video_init(); // mononoke_video.cpp
-
 
 wchar_t *
 plat_get_string(int i)
@@ -147,8 +144,7 @@ int
 plat_vidapi(const char *api)
 {
     // Initialize Mononoke video driver
-    mononoke_video_init();
-
+    mononoke_video_init(NULL);
 
     endblit();
     device_force_redraw();
@@ -178,7 +174,7 @@ plat_mouse_capture(int on)
 void
 plat_resize(int w, int h, int monitor_index)
 {
-    //vnc_resize(w, h);
+    mononoke_video_resize(w, h);
 }
 
 wchar_t *

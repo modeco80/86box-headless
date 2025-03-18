@@ -74,14 +74,6 @@ plat_pause(int p)
 }
 
 void
-mouse_poll()
-{
-    // no-op; RAMP display assigns its own poll_ex handler
-    // which is almost always called, but we still need
-    // to define this because it's still referenced
-}
-
-void
 set_language(uint32_t id)
 {
     lang_id = id;
@@ -150,13 +142,15 @@ main_thread(void *param)
             plat_delay_ms(1);
 
         /* If needed, handle a screen resize. */
-        if (atomic_load(&doresize_monitors[0]) && !video_fullscreen && !is_quit) {
+        if (atomic_load(&doresize_monitors[0]) && !is_quit) {
             // printf("resize to %d x %d\n", scrnsz_x, scrnsz_y);
-            if (vid_resize & 2)
-                plat_resize(fixed_size_x, fixed_size_y, 0);
-            else
-                plat_resize(scrnsz_x, scrnsz_y, 0);
-            atomic_store(&doresize_monitors[0], 1);
+            plat_resize(scrnsz_x, scrnsz_y, 0);
+
+            // Doing this makes far less duplicates resize requests happen, 
+            // and I suspect what was intended to have been written here.
+            // I'll still probably have to handle in mononoke_video_resize() duplicate changes,
+            // however hopefully it won't do that *every single frame*.
+            atomic_store(&doresize_monitors[0], 0);
         }
     }
 
@@ -238,11 +232,8 @@ main(int argc, char **argv)
     // Unpause the emulated machine.
     plat_pause(0);
 
-    // Start RAMP. This will block until the PC stops
+    // Start Monoke server. This will block until the PC stops.
     mononoke_server_start();
-
-    while (1)
-        sleep(1);
 
     return 0;
 }

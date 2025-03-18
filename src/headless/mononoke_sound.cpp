@@ -12,7 +12,7 @@
  *
  * Authors:  modeco80
  *
- *           Copyright 2023 modeco80.
+ *           Copyright 2023-2025 modeco80.
  */
 
 #include <math.h>

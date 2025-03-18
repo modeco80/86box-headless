@@ -6,14 +6,12 @@
  *
  *          This file is part of the 86Box distribution.
  *
- *          Implement the VNC remote renderer with LibVNCServer.
+ *          Mononoke video backend.
  *
  *
  *
- * Authors: Fred N. van Kempen, <decwiz@yahoo.com>
- *          Based on raw code by RichardG, <richardg867@gmail.com>
- *
- *          Copyright 2017-2019 Fred N. van Kempen.
+ * Authors: Lily Tsuru (modeco80)
+ *      (c) 2023-2025 Lily Tsuru.
  */
 #include <stdarg.h>
 #include <stdio.h>
@@ -30,34 +28,22 @@
 #include <86box/plat.h>
 #include <86box/ui.h>
 
-static int              clients;
-static int              updatingSize;
-static int              allowedX,
-    allowedY;
-static int ptr_x, ptr_y, ptr_but;
-
-typedef struct {
-    int buttons;
-    int dx;
-    int dy;
-    int dwheel;
-} MOUSESTATE;
-
-static MOUSESTATE ms;
-
-
+// This function runs on the blit thread.
 static void
 mononoke_video_blit(int x, int y, int w, int h, int monitor_index)
 {
-    printf("rampvideo_blit(rect: %dx%d at %dx%d, monitor %d)\n", w, h, x, y, monitor_index);
- 
-    //for (row = 0; row < h; ++row)
-    //    video_copy(&(((uint8_t *) rfb->frameBuffer)[row * 2048 * sizeof(uint32_t)]), &(buffer32->line[y + row][x]), w * sizeof(uint32_t));
+    // printf("rampvideo_blit(rect: %dx%d at %dx%d, monitor %d)\n", w, h, x, y, monitor_index);
 
+    // for (row = 0; row < h; ++row)
+    //     video_copy(&(((uint8_t *) rfb->frameBuffer)[row * 2048 * sizeof(uint32_t)]), &(buffer32->line[y + row][x]), w * sizeof(uint32_t));
 
-    // Signal to 86Box we don't need the buffer anymore.
+    // Signal to 86Box we have completed blit
+    // and don't need access to the buffer anymore.
     video_blit_complete_monitor(monitor_index);
 }
+
+// These functions run on the main emulator thread.
+// Thus, we can (probably) safely call 86Box routines in it.
 
 extern "C" {
 int
@@ -66,7 +52,6 @@ mononoke_video_init(UNUSED(void *arg))
     // Pause emulation
     plat_pause(1);
     cgapal_rebuild_monitor(0);
-
 
     /* Set up our BLIT handlers. */
     video_setblit(mononoke_video_blit);
@@ -81,11 +66,11 @@ mononoke_video_close(void)
 }
 
 void
-mononoke_video_resize(int x, int y)
+mononoke_video_resize(int width, int height)
 {
-   // Need to handle this later :)
+    //printf("mononoke_video_resize(%dx%d)\n", width, height);
+    // Need to handle this later :)
 }
-
 }
 
 /*
