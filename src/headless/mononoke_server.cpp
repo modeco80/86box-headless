@@ -4,6 +4,7 @@
 #include <google/protobuf/message.h>
 #include <set>
 #include <stdexcept>
+#include <span>
 
 #include "proto/mononoke_client.pb.h"
 #include "proto/mononoke_server.pb.h"
@@ -54,8 +55,9 @@ namespace mononoke {
 
 struct Server::Impl {
 
-    template<class T>
-    inline std::shared_ptr<T> MakeProtobufMsg() {
+    template <class T>
+    inline std::shared_ptr<T> MakeProtobufMsg()
+    {
         return std::make_shared<T>();
     }
 
@@ -184,7 +186,7 @@ struct Server::Impl {
 
                 auto session = std::make_shared<ClientSession>(*this, std::move(socket));
 
-                session->Send(MakeInitialSizeMsg());
+                session->Send(MakeSizeMsg());
                 session->Send(MakeInitialBlitMsg());
 
                 sessions.insert(session);
@@ -205,8 +207,9 @@ struct Server::Impl {
         return;
     }
 
-    void BroadcastToSessions(std::shared_ptr<mononoke::ServerMessage> message) {
-        for(auto sp: sessions)
+    void BroadcastToSessions(std::shared_ptr<mononoke::ServerMessage> message)
+    {
+        for (auto sp : sessions)
             sp->Send(message);
     }
 
@@ -216,12 +219,13 @@ struct Server::Impl {
         sessions.erase(session);
     }
 
-    std::shared_ptr<mononoke::ServerMessage> MakeInitialSizeMsg() {
-        auto sm = std::make_shared<mononoke::ServerMessage>();
+    // NOTE: This function assumes you are holding the surface lock when you call it
+    std::shared_ptr<mononoke::ServerMessage> MakeSizeMsg()
+    {
+        auto sm   = std::make_shared<mononoke::ServerMessage>();
         auto size = sm->mutable_resize();
 
         {
-            std::scoped_lock lk(surfaceLock);
             size->set_w(this->size.width);
             size->set_h(this->size.height);
         }
@@ -229,40 +233,54 @@ struct Server::Impl {
         return sm;
     }
 
-
-    std::shared_ptr<mononoke::ServerMessage> MakeInitialBlitMsg()
+    std::shared_ptr<mononoke::ServerMessage> MakeBlitMsg(std::span<const util::Surface::RectT> rects)
     {
-        std::unique_ptr<util::Pixel[]> pixelsTemp;
-        util::Surface::SizeT           sizeTemp;
-
-        // Paint the buffer.
+        auto sm       = std::make_shared<mononoke::ServerMessage>();
+        auto rectsMsg = sm->mutable_rects();
         {
             std::scoped_lock lk(surfaceLock);
-            sizeTemp   = size;
-            pixelsTemp = std::make_unique<util::Pixel[]>(size.Linear());
+            for (auto &rect : rects) {
+                auto *rectMsg = rectsMsg->add_rects();
 
-            auto &buffer = surfaces[backBufferIndex];
-            auto *bufPtr = buffer.GetData();
+                std::unique_ptr<util::Pixel[]> pixelsTemp;
+                util::Surface::SizeT           sizeTemp = { rect.width, rect.height };
 
-            // Copy line by line the data.
-            for (auto y = 0; y < size.height; y++) {
-                memcpy(&pixelsTemp[y * (std::size_t)size.width], &bufPtr[y * 2048], (std::size_t)size.width * sizeof(util::Pixel));
+                // Paint the buffer.
+                {
+                    pixelsTemp = std::make_unique<util::Pixel[]>(size.Linear());
+
+                    auto &buffer = surfaces[backBufferIndex];
+                    auto *bufPtr = buffer.GetData();
+
+                    // Copy line by line the data.
+                    for (auto y = rect.y; y < rect.height; y++) {
+                        memcpy(&pixelsTemp[y * (std::size_t) size.width + rect.x], &bufPtr[y * 2048 + rect.x], (std::size_t) rect.width * sizeof(util::Pixel));
+                    }
+                }
+
+                // Set everything up.
+                rectMsg->set_x(rect.x);
+                rectMsg->set_y(rect.y);
+                rectMsg->set_w(rect.width);
+                rectMsg->set_h(rect.height);
+
+                rectMsg->set_rectdata(reinterpret_cast<const char *>(&pixelsTemp[0]), sizeTemp.Linear() * sizeof(util::Pixel));
             }
         }
 
-        // Okay, we've got the buffer. Now let's do something worthwhile with it.
-        auto sm = std::make_shared<mononoke::ServerMessage>();
-
-        // Messy.
-        auto  rects = sm->mutable_rects();
-        auto *rect  = rects->add_rects();
-        rect->set_x(0);
-        rect->set_y(0);
-        rect->set_w(sizeTemp.width);
-        rect->set_h(sizeTemp.height);
-        rect->set_rectdata(reinterpret_cast<const char *>(&pixelsTemp[0]), sizeTemp.Linear() * sizeof(util::Pixel));
-
         return sm;
+    }
+
+    std::shared_ptr<mononoke::ServerMessage> MakeInitialBlitMsg()
+    {
+        const util::Surface::RectT rectArr[1] = {
+            { .x      = 0,
+             .y      = 0,
+             .width  = size.width,
+             .height = size.height }
+        };
+
+        return MakeBlitMsg(rectArr);
     }
 
     void BlitResize(u16 w, u16 h)
@@ -271,12 +289,19 @@ struct Server::Impl {
         if (size.width != w && size.height != h) {
             {
                 std::scoped_lock lk(surfaceLock);
-                printf("Mononoke: display (would be) resized to %dx%d\n", w, h);
+                printf("Mononoke: display resized to %dx%d\n", w, h);
                 // No I'm not happy.
                 size = { w, h };
             }
 
+
+            auto sizeMsg = [&]() {
+                std::scoped_lock lk(surfaceLock);
+                return MakeSizeMsg();
+            }();
+
             auto blitMsg = MakeInitialBlitMsg();
+            BroadcastToSessions(sizeMsg);
             BroadcastToSessions(blitMsg);
         }
     }
@@ -296,12 +321,13 @@ struct Server::Impl {
         if (rects.size() == 0)
             return;
 
-#if 0
-        printf("Differing rects: %lu\n", rects.size());
-        for (auto &rect : rects) {
-            printf("  %dx%d @ %dx%d\n", rect.width, rect.height, rect.x, rect.y);
-        }
-#endif
+        // Make the message on the blit thread, why not.
+        auto sm = MakeBlitMsg(rects);
+
+        // Post message broadcast back to the main thread.
+        asio::post(ioc, [this, sm]() {
+            BroadcastToSessions(sm);
+        });
     }
 
 private:
@@ -317,7 +343,7 @@ private:
 
     util::Surface                     surfaces[2];
     std::uint8_t                      backBufferIndex = 0; // use !backBufferIndex to get the last fully-drawn frame.
-    util::Surface::SizeT              size{};
+    util::Surface::SizeT              size {};
     std::vector<util::Surface::RectT> rects;
     std::mutex                        surfaceLock; // Must be held to mutate the above fields
 
