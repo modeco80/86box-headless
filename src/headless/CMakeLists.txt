@@ -26,6 +26,9 @@ add_library(plat OBJECT
         util/buffer_pool.cpp
         util/highprec_timer.cpp
 
+        # ASIO util
+        util/asio_util/mononoke_framed.cpp
+
         # Headless platform source files
         platform/headless_mmap.cpp
         platform/headless_path.cpp

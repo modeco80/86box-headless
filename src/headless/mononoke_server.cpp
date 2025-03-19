@@ -12,6 +12,8 @@
 #include "util/asio_util/asio_types.hpp"
 #include "util/buffer_pool.hpp"
 
+#include "util/asio_util/mononoke_framed.hpp"
+
 namespace asio       = boost::asio;
 using StreamProtocol = asio::local::stream_protocol;
 
@@ -41,59 +43,6 @@ mononoke_server_stop()
 }
 
 namespace mononoke {
-
-struct MononokeFrameHeader {
-    char          magic[4]; // MMSG
-    std::uint32_t dataSize;
-
-    MononokeFrameHeader()
-    {
-        magic[0] = 'M';
-        magic[1] = 'M';
-        magic[2] = 'S';
-        magic[3] = 'G';
-    }
-};
-
-util::BufferPool mononokeProtobufsPool;
-
-/// Sends a mononoke framed protobuf message to the given AsyncWriteStream.
-template <class AsyncWriteStream>
-util::Awaitable<void>
-AsyncSendMononokeFramed(AsyncWriteStream &stream, google::protobuf::Message &message)
-{
-    MononokeFrameHeader header;
-    auto                bufSize = message.ByteSizeLong();
-
-    auto *buffer = mononokeProtobufsPool.GetBuffer(bufSize);
-    if (buffer == nullptr)
-        throw std::runtime_error("Buffer pool was unable to serve request");
-
-    if (!message.SerializeToArray(&buffer[0], bufSize))
-        throw std::runtime_error("Failed to serialize Mononoke protobuf");
-
-    // Swap data size to BE.
-    header.dataSize = __builtin_bswap32(bufSize);
-
-    // Use Scatter-gather I/O for nyoom.
-    std::array<asio::const_buffer, 2> buffers = {
-        asio::buffer(static_cast<void *>(&header), sizeof(header)),
-        asio::buffer(buffer, bufSize)
-    };
-
-    // Write it, and once we're done in either success or failure case return the buffer
-    // back to the pool.
-    try {
-        co_await asio::async_write(stream, buffers, asio::deferred);
-    } catch (boost::system::system_error &ec) {
-        mononokeProtobufsPool.ReturnBuffer(buffer);
-        throw;
-        co_return;
-    }
-
-    mononokeProtobufsPool.ReturnBuffer(buffer);
-    co_return;
-}
 
 struct Server::Impl {
 
@@ -125,14 +74,22 @@ struct Server::Impl {
                 resize->set_w(640);
                 resize->set_h(480);
 
-                co_await AsyncSendMononokeFramed(socket, serverMessage);
+                co_await util::AsyncSendMononokeFramed(socket, serverMessage);
 
                 while (true) {
+#if 0
                     char buffer[4] {};
 
                     auto n = co_await socket.async_read_some(asio::mutable_buffer(&buffer[0], 4));
                     for (auto i = 0; i < n; ++i)
                         std::putc(buffer[i], stdout);
+#endif
+                    try {
+                        auto message = co_await util::AsyncReadMononokeFramed<mononoke::ClientMessage>(socket);
+                    } catch(std::runtime_error& re) {
+                        printf("Error parsing client message: %s\n", re.what());
+                        co_return Close();
+                    }
                 }
             } catch (boost::system::system_error &err) {
 
