@@ -44,7 +44,7 @@ Surface::Clear()
 }
 
 void
-Surface::Paint(RectT srcAt, PointT dstAt, Pixel *pixelData)
+Surface::Paint(RectT srcAt, PointT dstAt, const Pixel *pixelData)
 {
     auto src_buffer = pixelData;
     // COLLABVM_ASSERT(src_buffer != nullptr, "the fuck are you DOING");

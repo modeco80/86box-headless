@@ -52,7 +52,7 @@ namespace util {
 		[[nodiscard]] Pixel* GetData() const { return pixelData.get(); }
 
 		/// Paint a given bit of data to the surface.
-		void Paint(RectT srcAt, PointT dstAt, Pixel* pixelData);
+		void Paint(RectT srcAt, PointT dstAt, const Pixel* pixelData);
 
 		/// Returns a whole-surface View
 		inline View AsView() {

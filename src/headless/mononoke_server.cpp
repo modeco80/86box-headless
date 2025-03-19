@@ -52,6 +52,8 @@ mononoke_server_stop()
 }
 
 namespace mononoke {
+    constexpr static auto kMaxWh = 2048;
+    constexpr static auto kMaxSize = util::Surface::SizeT { kMaxWh, kMaxWh } ;
 
 struct Server::Impl {
 
@@ -93,7 +95,7 @@ struct Server::Impl {
             try {
                 while (true) {
                     try {
-                        auto message = co_await util::AsyncReadMononokeFramed<mononoke::ClientMessage>(socket);
+                        auto message = co_await util::AsyncReadMononokeFramed<mononoke::ClientMessage>(socket, true);
                         // TODO: Handle message
                     } catch (std::runtime_error &re) {
                         printf("Error parsing client message: %s\n", re.what());
@@ -149,9 +151,10 @@ struct Server::Impl {
         : server(server)
         , acceptor(ioc)
     {
+        // Pre-allocate surfaces.
         // Thank 86Box.
-        surfaces[0].Resize({ 2048, 2048 });
-        surfaces[1].Resize({ 2048, 2048 });
+        surfaces[0].Resize(kMaxSize);
+        surfaces[1].Resize(kMaxSize);
     }
 
     ~Impl()
@@ -235,28 +238,12 @@ struct Server::Impl {
 
     std::shared_ptr<mononoke::ServerMessage> MakeBlitMsg(std::span<const util::Surface::RectT> rects)
     {
-        auto sm       = std::make_shared<mononoke::ServerMessage>();
-        auto rectsMsg = sm->mutable_rects();
+        auto             sm       = std::make_shared<mononoke::ServerMessage>();
+        auto             rectsMsg = sm->mutable_rects();
+        std::scoped_lock lk(surfaceLock);
         {
-            std::scoped_lock lk(surfaceLock);
             for (auto &rect : rects) {
                 auto *rectMsg = rectsMsg->add_rects();
-
-                std::unique_ptr<util::Pixel[]> pixelsTemp;
-                util::Surface::SizeT           sizeTemp = { rect.width, rect.height };
-
-                // Paint the buffer.
-                {
-                    pixelsTemp = std::make_unique<util::Pixel[]>(size.Linear());
-
-                    auto &buffer = surfaces[backBufferIndex];
-                    auto *bufPtr = buffer.GetData();
-
-                    // Copy line by line the data.
-                    for (auto y = rect.y; y < rect.height; y++) {
-                        memcpy(&pixelsTemp[y * (std::size_t) size.width + rect.x], &bufPtr[y * 2048 + rect.x], (std::size_t) rect.width * sizeof(util::Pixel));
-                    }
-                }
 
                 // Set everything up.
                 rectMsg->set_x(rect.x);
@@ -264,6 +251,24 @@ struct Server::Impl {
                 rectMsg->set_w(rect.width);
                 rectMsg->set_h(rect.height);
 
+                util::Surface::SizeT           sizeTemp   = { rect.width, rect.height };
+                std::unique_ptr<util::Pixel[]> pixelsTemp = std::make_unique<util::Pixel[]>(sizeTemp.Linear());
+
+                // Paint the buffer.
+                {
+                    auto &buffer = surfaces[backBufferIndex];
+                    auto *bufPtr = buffer.GetData();
+
+                    // Copy line by line the data.
+                    for (auto y = 0; y < rect.height; y++) {
+                        memcpy(&pixelsTemp[y * sizeTemp.width], &bufPtr[(rect.y + y) * 2048 + rect.x], rect.width * sizeof(util::Pixel));
+                    }
+                }
+
+                // ARGH why does protobuf gencode do this..
+                //auto *pRectString = rectMsg->mutable_rectdata();
+                //pRectString->resize(sizeTemp.Linear() * sizeof(util::Pixel));
+                //memcpy(&pRectString->data()[0], &pixelsTemp[0], sizeTemp.Linear() * sizeof(util::Pixel));
                 rectMsg->set_rectdata(reinterpret_cast<const char *>(&pixelsTemp[0]), sizeTemp.Linear() * sizeof(util::Pixel));
             }
         }
@@ -294,7 +299,6 @@ struct Server::Impl {
                 size = { w, h };
             }
 
-
             auto sizeMsg = [&]() {
                 std::scoped_lock lk(surfaceLock);
                 return MakeSizeMsg();
@@ -321,12 +325,12 @@ struct Server::Impl {
         if (rects.size() == 0)
             return;
 
-        // Make the message on the blit thread, why not.
         auto sm = MakeBlitMsg(rects);
 
         // Post message broadcast back to the main thread.
-        asio::post(ioc, [this, sm]() {
-            BroadcastToSessions(sm);
+        // Make the message on the blit thread, why not.
+        asio::post(ioc, [this, sm_clone = sm]() {
+            BroadcastToSessions(sm_clone);
         });
     }
 

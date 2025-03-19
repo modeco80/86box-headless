@@ -24,15 +24,19 @@ struct MononokeFrameHeader {
         dataSize = 0;
     }
 
-    bool Valid() const
+    bool Valid(bool isServer = false) const
     {
         if (magic != VALID_MAGIC) {
             return false;
         }
 
-        // Client->server messages should never be above 8kb
-        // If this changes, this can be updated
-        return GetDataSize() >= (8 * (1024 * 1024));
+        if(isServer) {
+            // Client->server messages should never be above 8kb
+            // If this changes, this can be updated
+            return GetDataSize() >= (8 * (1024 * 1024));
+        }
+
+        return true;
     }
 
     void SetDataSize(std::uint32_t len)
@@ -95,7 +99,7 @@ AsyncSendMononokeFramed(AsyncWriteStream &stream, google::protobuf::Message &mes
 /// Reads a Mononoke framed protobuf message with the provided root.
 template <class TRoot, class AsyncReadStream>
 util::Awaitable<TRoot>
-AsyncReadMononokeFramed(AsyncReadStream &stream)
+AsyncReadMononokeFramed(AsyncReadStream &stream, bool isServer = false)
     requires(std::is_base_of<google::protobuf::Message, TRoot>::value)
 {
     MononokeFrameHeader header;
@@ -105,7 +109,7 @@ AsyncReadMononokeFramed(AsyncReadStream &stream)
 
     printf("read header\n");
 
-    if (!header.Valid())
+    if (!header.Valid(isServer))
         throw std::runtime_error("Invalid frame header.");
 
     printf("header is valid apparently, %d bytes (0x%08x)\n", header.GetDataSize(), header.GetDataSize());
