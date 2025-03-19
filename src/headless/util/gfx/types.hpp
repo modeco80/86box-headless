@@ -15,7 +15,7 @@ struct Size {
     T width;
     T height;
 
-    constexpr std::size_t Linear() const { return width * height; }
+    constexpr std::size_t Linear() const { return static_cast<std::size_t>(width) * static_cast<std::size_t>(height); }
 };
 
 template <class T>

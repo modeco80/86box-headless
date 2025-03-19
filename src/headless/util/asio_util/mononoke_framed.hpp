@@ -61,9 +61,10 @@ AsyncSendMononokeFramed(AsyncWriteStream &stream, google::protobuf::Message &mes
     auto                bufSize = message.ByteSizeLong();
 
     // Get a pooled buffer used to hold the serialized protobuf.
-    auto *buffer = mononokeProtobufsPool.GetBuffer(bufSize);
-    if (buffer == nullptr)
-        throw std::runtime_error("Buffer pool was unable to serve request");
+    //auto *buffer = mononokeProtobufsPool.GetBuffer(bufSize);
+    //if (buffer == nullptr)
+    //    throw std::runtime_error("Buffer pool was unable to serve request");
+    auto buffer = std::make_unique<std::uint8_t[]>(bufSize);
 
     // Serialize the protobuf.
     header.SetDataSize(bufSize);
@@ -74,7 +75,7 @@ AsyncSendMononokeFramed(AsyncWriteStream &stream, google::protobuf::Message &mes
     // (hopefully, on *good* operating systems) a single writev() system call (or its analog).
     std::array<asio::const_buffer, 2> buffers = {
         asio::buffer(static_cast<void *>(&header), sizeof(header)),
-        asio::buffer(buffer, bufSize)
+        asio::buffer(buffer.get(), bufSize)
     };
 
     // Write the message.
@@ -82,12 +83,12 @@ AsyncSendMononokeFramed(AsyncWriteStream &stream, google::protobuf::Message &mes
     try {
         co_await asio::async_write(stream, buffers, asio::deferred);
     } catch (boost::system::system_error &ec) {
-        mononokeProtobufsPool.ReturnBuffer(buffer);
+    //    mononokeProtobufsPool.ReturnBuffer(buffer);
         throw;
         co_return;
     }
 
-    mononokeProtobufsPool.ReturnBuffer(buffer);
+   // mononokeProtobufsPool.ReturnBuffer(buffer);
     co_return;
 }
 
@@ -111,27 +112,29 @@ AsyncReadMononokeFramed(AsyncReadStream &stream)
 
     // Now that we know the size of the message, let's get a buffer off the pool to read the
     // serialized protobuf into temporairly.
-    auto *pBuffer = mononokeProtobufsPool.GetBuffer(header.GetDataSize());
-    if (pBuffer == nullptr)
-        throw std::runtime_error("Could not get a pooled buffer to read serialized protobuf into");
+    //auto *pBuffer = mononokeProtobufsPool.GetBuffer(header.GetDataSize());
+    //if (pBuffer == nullptr)
+     //   throw std::runtime_error("Could not get a pooled buffer to read serialized protobuf into");
+
+    auto buffer = std::make_unique<std::uint8_t[]>(header.GetDataSize());
 
     // Try to read into the buffer the pool gave us.
     try {
-        co_await asio::async_read(stream, asio::mutable_buffer(pBuffer, header.GetDataSize()));
+        co_await asio::async_read(stream, asio::mutable_buffer(buffer.get(), header.GetDataSize()));
     } catch (boost::system::system_error &err) {
-        mononokeProtobufsPool.ReturnBuffer(pBuffer);
+       // mononokeProtobufsPool.ReturnBuffer(pBuffer);
         throw;
     }
 
     // We read data, let's parse into the root.
     TRoot ret;
-    if (!ret.ParseFromArray(pBuffer, header.GetDataSize())) {
-        mononokeProtobufsPool.ReturnBuffer(pBuffer);
+    if (!ret.ParseFromArray(&buffer[0], header.GetDataSize())) {
+        //mononokeProtobufsPool.ReturnBuffer(pBuffer);
         throw std::runtime_error("Failed to parse protobuf from the buffer.");
     }
 
     // Well, it worked.
-    mononokeProtobufsPool.ReturnBuffer(pBuffer);
+    //mononokeProtobufsPool.ReturnBuffer(pBuffer);
     co_return ret;
 }
 
