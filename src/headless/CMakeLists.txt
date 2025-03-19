@@ -16,19 +16,64 @@
 #
 
 
-# Add required things for ramp
+# Add required things for Mononoke
 find_package(Boost REQUIRED)
 find_package(Protobuf REQUIRED)
 
+# Mononoke Protocol Buffers definitions
+add_library(mononoke_pb 
+    proto/mononoke_client.proto
+    proto/mononoke_server.proto
+    proto/mononoke_shared.proto
+)
 
-add_library(plat OBJECT 
-        # utility code
+protobuf_generate(
+    TARGET mononoke_pb
+    LANGUAGE cpp
+    IMPORT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_include_directories(mononoke_pb PUBLIC
+    ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+# Mononoke utility library
+add_library(mononoke_util
+        # utility code        
         util/buffer_pool.cpp
         util/highprec_timer.cpp
 
         # ASIO util
         util/asio_util/mononoke_framed.cpp
 
+        # gfx
+        util/gfx/surface.cpp
+        util/gfx/difftile.cpp
+)
+
+target_compile_features(mononoke_util PRIVATE
+    cxx_std_20 # For Coroutines
+)
+
+add_executable(mononoke_test_client
+    mononoke_test_client.cpp
+)
+
+
+target_link_libraries(mononoke_test_client PRIVATE 
+    Boost::headers # For ASIO
+    protobuf::libprotobuf
+    mononoke_util
+    mononoke_pb
+)
+
+target_compile_features(mononoke_test_client PRIVATE
+    cxx_std_20 # For Coroutines
+)
+
+## 86Box headless port
+
+add_library(plat OBJECT 
         # Headless platform source files
         platform/headless_mmap.cpp
         platform/headless_path.cpp
@@ -48,26 +93,11 @@ add_library(plat OBJECT
         headless_main.cpp
         )
 
-# Mononoke Protocol Buffers definitions
-add_library(mononoke_pb 
-    proto/mononoke_client.proto
-    proto/mononoke_server.proto
-    proto/mononoke_shared.proto
-)
-
-protobuf_generate(
-    TARGET mononoke_pb
-    LANGUAGE cpp
-    IMPORT_DIRS ${CMAKE_CURRENT_SOURCE_DIR}
-)
-
-target_include_directories(mononoke_pb PUBLIC
-    ${CMAKE_CURRENT_BINARY_DIR}
-)
 
 target_link_libraries(plat PRIVATE 
     Boost::headers # For ASIO
     protobuf::libprotobuf
+    mononoke_util
     mononoke_pb
 )
 

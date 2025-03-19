@@ -28,14 +28,17 @@
 #include <86box/plat.h>
 #include <86box/ui.h>
 
+#include "mononoke_server.hpp"
+
 // This function runs on the blit thread.
 static void
 mononoke_video_blit(int x, int y, int w, int h, int monitor_index)
 {
-    // printf("rampvideo_blit(rect: %dx%d at %dx%d, monitor %d)\n", w, h, x, y, monitor_index);
+    mononoke::Server::the().Blit(x, y, w, h);
 
     // for (row = 0; row < h; ++row)
     //     video_copy(&(((uint8_t *) rfb->frameBuffer)[row * 2048 * sizeof(uint32_t)]), &(buffer32->line[y + row][x]), w * sizeof(uint32_t));
+
 
     // Signal to 86Box we have completed blit
     // and don't need access to the buffer anymore.
@@ -68,6 +71,7 @@ mononoke_video_close(void)
 void
 mononoke_video_resize(int width, int height)
 {
+    mononoke::Server::the().BlitResize(width, height);
     //printf("mononoke_video_resize(%dx%d)\n", width, height);
     // Need to handle this later :)
 }

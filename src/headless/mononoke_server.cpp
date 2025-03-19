@@ -77,16 +77,10 @@ struct Server::Impl {
                 co_await util::AsyncSendMononokeFramed(socket, serverMessage);
 
                 while (true) {
-#if 0
-                    char buffer[4] {};
-
-                    auto n = co_await socket.async_read_some(asio::mutable_buffer(&buffer[0], 4));
-                    for (auto i = 0; i < n; ++i)
-                        std::putc(buffer[i], stdout);
-#endif
                     try {
                         auto message = co_await util::AsyncReadMononokeFramed<mononoke::ClientMessage>(socket);
-                    } catch(std::runtime_error& re) {
+                        // TODO: Handle message
+                    } catch (std::runtime_error &re) {
                         printf("Error parsing client message: %s\n", re.what());
                         co_return Close();
                     }
@@ -168,12 +162,24 @@ struct Server::Impl {
         sessions.erase(session);
     }
 
+    void BlitResize(u16 w, u16 h)
+    {
+        // Implement me!
+    }
+
+    void Blit(u16 x, u16 y, u16 w, u16 h)
+    {
+        // Implement me!
+    }
+
 private:
     Server &server;
 
     // TODO:
-    // Surface for blit buffer
-    // Mutex for surface (since blit runs on another seperate thread)
+    // double-buffered Surface for blit buffer (we'll need two buffers to difference,
+    //  because 86Box doesn't do it for us. Shame)
+    // Mutex for surfaces (since blit runs on another seperate thread)
+    // write pingpong index (can be a u8)
     //
     // PCM data buffer
 
@@ -206,5 +212,15 @@ void
 Server::Stop()
 {
     impl->Stop();
+}
+
+void
+Server::BlitResize(u16 w, u16 h)
+{
+    impl->BlitResize(w, h);
+}
+
+void Server::Blit(u16 x, u16 y, u16 w, u16 h) {
+    impl->Blit(x, y, w, h);
 }
 }

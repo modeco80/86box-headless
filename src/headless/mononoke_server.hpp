@@ -45,7 +45,7 @@ namespace mononoke {
 		void BlitResize(u16 w, u16 h);
 		
 		// dunno how to handle this. i hope i can just use buffer32 as is
-		void Blit(u16 x, u16 y, u16 w, u16 h, const u8* data);
+		void Blit(u16 x, u16 y, u16 w, u16 h);
 		
 		void Audio(const u8* sampleData, u16 sampleCount);
 	
